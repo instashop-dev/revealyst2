@@ -21,6 +21,9 @@ async function main(): Promise<void> {
   url.searchParams.delete("sslmode");
   const client = new Client({
     connectionString: url.toString(),
+    // GitHub runners lack IPv6 egress; the cloud Postgres resolves to IPv6
+    // first (ENETUNREACH), so prefer IPv4.
+    family: 4,
     ssl: process.env.PGSSLMODE === "disable" ? undefined : { rejectUnauthorized: false },
   });
   await client.connect();
