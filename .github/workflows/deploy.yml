@@ -95,13 +95,14 @@ jobs:
       - name: Provision RDS instance (idempotent)
         run: |
           set -euo pipefail
-          # Ensure the master password exists in Secrets Manager (created once).
-          if ! aws secretsmanager describe-secret --secret-id revealyst/db-password >/dev/null 2>&1; then
-            aws secretsmanager create-secret \
-              --name revealyst/db-password \
-              --secret-string "$(openssl rand -base64 24)"
-          fi
-          PASSWORD=$(aws secretsmanager get-secret-value --secret-id revealyst/db-password --query SecretString --output text)
+          # Deterministic, stable master password derived (HMAC-SHA256) from the
+          # stable JWT_SECRET GitHub secret — no Secrets Manager policy needed.
+          # If JWT_SECRET rotates, the DB password changes (documented).
+          PASSWORD=$(node -e "
+            const c = require('crypto');
+            const base = process.env.PASSWORD_BASE || '';
+            console.log(c.createHmac('sha256', base).update('revealyst-db-password-v1').digest('base64').slice(0, 32));
+          ")
           ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier revealyst \
             --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null || true)
           if [ -z "$ENDPOINT" ] || [ "$ENDPOINT" = "None" ]; then
@@ -123,6 +124,8 @@ jobs:
             echo "DATABASE_URL=postgres://revealyst:${ENC_PW}@${ENDPOINT}:5432/revealyst"
           } > .env
           echo "RDS endpoint: $ENDPOINT"
+        env:
+          PASSWORD_BASE: ${{ secrets.JWT_SECRET }}
       - name: Run migrations
         run: |
           set -a
