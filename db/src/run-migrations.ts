@@ -18,6 +18,8 @@ async function main(): Promise<void> {
   // connection-string value; encryption on, CA verification off for MVP).
   const url = new URL(databaseUrl);
   url.searchParams.delete("sslmode");
+  // Diagnostic: log host/port/db only (credentials stay masked).
+  console.log(`[db] host=${url.hostname} port=${url.port} db=${url.pathname.slice(1)}`);
   // GitHub runners lack IPv6 egress and cloud Postgres hosts commonly resolve
   // to IPv6 first (ENETUNREACH). Resolve the hostname to a literal IPv4
   // address and connect to that, bypassing node's dual-stack handling.
