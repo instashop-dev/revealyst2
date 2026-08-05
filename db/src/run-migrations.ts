@@ -9,21 +9,27 @@ import { runMigrations } from "./migrations.js";
  *   DATABASE_URL=postgres://... node dist/run-migrations.js
  */
 async function main(): Promise<void> {
-  // GitHub runners lack IPv6 egress and cloud Postgres hosts commonly resolve
-  // to IPv6 first (ENETUNREACH) — prefer IPv4 for all lookups.
-  setDefaultResultOrder("ipv4first");
-
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.error("DATABASE_URL is not set");
     process.exit(1);
   }
-  // pg 8.13+ prefers sslmode from the connection string (with a confusing
-  // libpq-compat mapping), so strip it and pass the ssl option directly:
-  // encryption on, CA verification off for the MVP (the database is reached
-  // over the public internet — see db/terraform/README.md hardening notes).
+  // Strip sslmode and pass the ssl option directly (pg 8.13+ prefers the
+  // connection-string value; encryption on, CA verification off for MVP).
   const url = new URL(databaseUrl);
   url.searchParams.delete("sslmode");
+  // GitHub runners lack IPv6 egress and cloud Postgres hosts commonly resolve
+  // to IPv6 first (ENETUNREACH). Resolve the hostname to a literal IPv4
+  // address and connect to that, bypassing node's dual-stack handling.
+  const host = url.hostname;
+  if (host && !/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+    try {
+      const { address } = await lookup(host, { family: 4 });
+      url.hostname = address;
+    } catch {
+      // keep the hostname — the connect error will be more informative
+    }
+  }
   const client = new Client({
     connectionString: url.toString(),
     ssl: process.env.PGSSLMODE === "disable" ? undefined : { rejectUnauthorized: false },
