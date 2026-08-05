@@ -9,7 +9,12 @@ export async function createPostgresDb(connectionString: string): Promise<SqlDb>
   const { default: postgres } = await import("postgres");
   // SSL required: RDS public endpoints enforce TLS (postgres.js default is
   // "require" for non-localhost, made explicit here).
-  const sql = postgres(connectionString, { prepare: false, max: 5, idle_timeout: 20, ssl: "require" });
+  const sql = postgres(connectionString, {
+    prepare: false,
+    max: 5,
+    idle_timeout: 20,
+    ssl: "require",
+  });
   return {
     async query<T extends object>(text: string, params: unknown[] = []) {
       const rows = await sql.unsafe<T[]>(text, params as never[]);
