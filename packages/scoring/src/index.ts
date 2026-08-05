@@ -1,22 +1,36 @@
+import { RuleScoringEngine } from "./rules.js";
+import { OnnxScoringAdapter } from "./onnx-adapter.js";
+import type { OnnxModelConfig } from "./onnx-adapter.js";
+import type { ScoringAdapter } from "./adapter.js";
+
 /**
  * @revealyst/scoring — self-contained prompt scoring engine.
  *
- * Phase 1 scaffold: the real rule-based engine and ONNX adapter land in Phase 2.
- * The module is intentionally framework-free so both the Chrome extension
- * (content script / service worker) and the web app can import it.
+ * Framework-free module usable from the Chrome extension (content script /
+ * service worker) and the web app. Rule-based scoring is the working engine;
+ * an ONNX/Transformers.js adapter is wired for a future fine-tuned model and
+ * falls back to rules whenever the model is unavailable (spec §5.2).
  */
+export * from "./types.js";
+export * from "./flags.js";
+export {
+  RuleScoringEngine,
+  deriveFlags,
+  estimateTokens,
+  scoreSpecificity,
+  scoreContext,
+  scoreRoleClarity,
+  scoreOutputFormat,
+  scoreExamples,
+} from "./rules.js";
+export { OnnxScoringAdapter } from "./onnx-adapter.js";
+export type { OnnxModelConfig } from "./onnx-adapter.js";
+export type { ScoringAdapter } from "./adapter.js";
+
 export const scoringEngineName = "revealyst-scoring";
 
-export interface ScoreBreakdown {
-  specificity: number;
-  context: number;
-  role_clarity: number;
-  output_format: number;
-  examples_included: number;
-}
-
-export interface ScoreResult {
-  score: number;
-  breakdown: ScoreBreakdown;
-  flags: string[];
+/** Factory: pass an ONNX model config to opt into the model path (with rule
+ * fallback); pass nothing for pure rule-based scoring. */
+export function createScoringEngine(config?: OnnxModelConfig | null): ScoringAdapter {
+  return config ? new OnnxScoringAdapter(config) : new RuleScoringEngine();
 }
