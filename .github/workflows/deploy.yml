@@ -164,12 +164,8 @@ jobs:
       - name: Ensure Hyperdrive config (Supabase pooler)
         run: |
           set -euo pipefail
-          # Idempotent: create only if the config doesn't already exist.
-          if ! npx wrangler hyperdrive list --json 2>/dev/null | grep -q '"name": *"revealyst-pooler"'; then
-            npx wrangler hyperdrive create revealyst-pooler               --connection-string="$DATABASE_URL"
-          else
-            echo "Hyperdrive config 'revealyst-pooler' already exists"
-          fi
+          # Idempotent: attempt create; tolerate 'already exists' (code 2017).
+          npx wrangler hyperdrive create revealyst-pooler             --connection-string="$DATABASE_URL" 2>&1 | grep -v 'already exists' || true
           ID=$(npx wrangler hyperdrive list --json 2>/dev/null | python3 -c "import json,sys; [print(c['id']) for c in json.load(sys.stdin) if c.get('name') == 'revealyst-pooler']")
           echo "HYPERDRIVE_ID=$ID"
           echo "HYPERDRIVE_ID=$ID" >> "$GITHUB_ENV"
