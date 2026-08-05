@@ -55,6 +55,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Deploy worker
+        if: ${{ hashFiles('workers/wrangler.toml') != '' }}
         working-directory: workers
         run: npx wrangler deploy
 
@@ -78,6 +79,7 @@ jobs:
         working-directory: web
         run: npm run build
       - name: Publish to Cloudflare Pages
+        if: ${{ hashFiles('web/index.html') != '' }}
         working-directory: web
         run: npx wrangler pages deploy dist --project-name revealyst-web
 
@@ -128,5 +130,6 @@ jobs:
         working-directory: vectorize
         run: npm run build
       - name: Seed Vectorize namespace
+        if: ${{ hashFiles('vectorize/src/seed.ts') != '' }}
         working-directory: vectorize
         run: npm run seed
