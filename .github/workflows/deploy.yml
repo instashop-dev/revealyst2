@@ -33,16 +33,18 @@ jobs:
       cf: ${{ steps.check.outputs.cf }}
       aws: ${{ steps.check.outputs.aws }}
       openai: ${{ steps.check.outputs.openai }}
+      db: ${{ steps.check.outputs.db }}
     steps:
       - id: check
         run: |
           echo "cf=${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}" >> "$GITHUB_OUTPUT"
           echo "aws=${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_REGION != '' }}" >> "$GITHUB_OUTPUT"
           echo "openai=${{ secrets.OPENAI_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
+          echo "db=${{ secrets.DATABASE_URL != '' }}" >> "$GITHUB_OUTPUT"
 
-  # --- Cloudflare Workers API -------------------------------------------
+  # --- Cloudflare Workers API (after Vectorize so the binding exists) ---
   workers:
-    needs: gate
+    needs: [gate, vectorize]
     if: ${{ needs.gate.outputs.cf == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -70,10 +72,12 @@ jobs:
             curl -sf --max-time 20 "$URL/api/health" && echo " → health OK" || echo "health check failed (worker may still be warming up)"
           fi
 
-  # --- AWS RDS provisioning + migrations + worker secrets ----------------
+  # --- Database: migrations + worker secrets ----------------------------
+  # Uses the user-provisioned DATABASE_URL secret when present; otherwise
+  # attempts automated RDS provisioning (requires a widened IAM policy).
   rds:
     needs: [gate, workers]
-    if: ${{ needs.gate.outputs.aws == 'true' }}
+    if: ${{ needs.gate.outputs.aws == 'true' || needs.gate.outputs.db == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -92,39 +96,43 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Provision RDS instance (idempotent)
+      - name: Resolve database connection and provision RDS if needed
         run: |
           set -euo pipefail
-          # Deterministic, stable master password derived (HMAC-SHA256) from the
-          # stable JWT_SECRET GitHub secret — no Secrets Manager policy needed.
-          # If JWT_SECRET rotates, the DB password changes (documented).
-          PASSWORD=$(node -e "
-            const c = require('crypto');
-            const base = process.env.PASSWORD_BASE || '';
-            console.log(c.createHmac('sha256', base).update('revealyst-db-password-v1').digest('base64').slice(0, 32));
-          ")
-          ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier revealyst \
-            --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null || true)
-          if [ -z "$ENDPOINT" ] || [ "$ENDPOINT" = "None" ]; then
-            aws rds create-db-instance \
-              --db-instance-identifier revealyst \
-              --engine postgres --engine-version 15.7 \
-              --db-instance-class db.t3.micro --allocated-storage 20 \
-              --master-username revealyst --master-user-password "$PASSWORD" \
-              --db-name revealyst --publicly-accessible \
-              --backup-retention-period 7 --storage-encrypted \
-              --deletion-protection --tags Key=Service,Value=revealyst
-            echo "RDS instance provisioning — this takes several minutes..."
-            aws rds wait db-instance-available --db-instance-identifier revealyst
+          if [ -n "$DATABASE_URL" ]; then
+            echo "Using user-provided DATABASE_URL (manual provisioning)"
+            printf 'DATABASE_URL=%s\n' "$DATABASE_URL" > .env
+          else
+            # Automated provisioning — requires rds:CreateDBInstance etc.
+            # Deterministic, stable master password derived (HMAC-SHA256) from
+            # the stable JWT_SECRET GitHub secret.
+            PASSWORD=$(node -e "
+              const c = require('crypto');
+              const base = process.env.PASSWORD_BASE || '';
+              console.log(c.createHmac('sha256', base).update('revealyst-db-password-v1').digest('base64').slice(0, 32));
+            ")
             ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier revealyst \
-              --query 'DBInstances[0].Endpoint.Address' --output text)
+              --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null || true)
+            if [ -z "$ENDPOINT" ] || [ "$ENDPOINT" = "None" ]; then
+              aws rds create-db-instance \
+                --db-instance-identifier revealyst \
+                --engine postgres --engine-version 15.7 \
+                --db-instance-class db.t3.micro --allocated-storage 20 \
+                --master-username revealyst --master-user-password "$PASSWORD" \
+                --db-name revealyst --publicly-accessible \
+                --backup-retention-period 7 --storage-encrypted \
+                --deletion-protection --tags Key=Service,Value=revealyst
+              echo "RDS instance provisioning — this takes several minutes..."
+              aws rds wait db-instance-available --db-instance-identifier revealyst
+              ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier revealyst \
+                --query 'DBInstances[0].Endpoint.Address' --output text)
+            fi
+            ENC_PW=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$PASSWORD")
+            printf 'DATABASE_URL=postgres://revealyst:%s@%s:5432/revealyst\n' "$ENC_PW" "$ENDPOINT" > .env
+            echo "RDS endpoint: $ENDPOINT"
           fi
-          ENC_PW=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$PASSWORD")
-          {
-            echo "DATABASE_URL=postgres://revealyst:${ENC_PW}@${ENDPOINT}:5432/revealyst"
-          } > .env
-          echo "RDS endpoint: $ENDPOINT"
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PASSWORD_BASE: ${{ secrets.JWT_SECRET }}
       - name: Run migrations
         run: |

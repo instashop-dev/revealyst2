@@ -5,15 +5,10 @@ compatibility_flags = ["nodejs_compat"]
 
 # RDS PostgreSQL access from the Worker (postgres.js over TCP).
 # Production hardening: Cloudflare Hyperdrive or Tunnel (see docs/runbook.md).
-#
-# NOTE: the [[vectorize]] VECTORIZE binding is temporarily removed because the
-# provisioned Cloudflare API token lacks the Vectorize permission, which
-# prevents both namespace creation and worker deployment. Suggestions run on
-# the static-pattern fallback (spec §7). Re-add once the token has
-# Vectorize:Edit:
-#   [[vectorize]]
-#   binding = "VECTORIZE"
-#   index_name = "prompt-patterns"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "prompt-patterns"
 
 [observability]
 enabled = true
