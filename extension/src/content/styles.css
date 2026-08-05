@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* Revealyst sidebar — scoped inside the shadow DOM (spec §5.1: shadow DOM to
+   avoid CSS conflicts with the host LLM page). */
+:host {
+  all: initial;
+}
+
+.revealyst-root {
+  height: 100%;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  background: #fff;
+  border-left: 1px solid #e4e4e7;
+  box-sizing: border-box;
+}
