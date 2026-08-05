@@ -55,11 +55,11 @@ Terraform, and Vectorize seeding. Until a secret exists, its job is skipped.
 
 ## Status
 
-Phases tracked in the project plan:
+Tracked in detail in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md):
 
-1. Foundation & CI — ✅ scaffold, tooling, workflows
-2. Scoring engine — in progress
-3. Backend & data — pending
-4. Chrome extension — pending
-5. Web dashboard — pending
-6. Production readiness — pending
+1. Foundation & CI — ✅ done
+2. Scoring engine — ✅ done
+3. Backend & data — ✅ done (live Supabase + Cloudflare Hyperdrive, round-trip verified)
+4. Chrome extension — ✅ done
+5. Web dashboard — 🟡 built, merged & deployed; final live verification pending
+6. Production readiness — ⬜ pending
