@@ -1,0 +1,49 @@
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import "./styles.css";
+import { AuthProvider, useAuth } from "./auth/session.js";
+import { AppShell } from "./components/AppShell.js";
+import { LoginPage } from "./pages/LoginPage.js";
+import { VerifyPage } from "./pages/VerifyPage.js";
+import { ProgressPage } from "./pages/ProgressPage.js";
+import { HistoryPage } from "./pages/HistoryPage.js";
+import { AchievementsPage } from "./pages/AchievementsPage.js";
+import { SettingsPage } from "./pages/SettingsPage.js";
+import { TeamDashboardPage } from "./pages/TeamDashboardPage.js";
+import { LibraryPage } from "./pages/LibraryPage.js";
+
+function GuardedApp() {
+  const { session, loading } = useAuth();
+  if (loading)
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-zinc-400">
+        Loading…
+      </div>
+    );
+  return (
+    <Routes>
+      <Route path="/auth/verify" element={<VerifyPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={session ? <AppShell /> : <Navigate to="/login" replace />}>
+        <Route index element={<Navigate to="/progress" replace />} />
+        <Route path="progress" element={<ProgressPage />} />
+        <Route path="history" element={<HistoryPage />} />
+        <Route path="achievements" element={<AchievementsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="team" element={<TeamDashboardPage />} />
+        <Route path="library" element={<LibraryPage />} />
+      </Route>
+    </Routes>
+  );
+}
+
+createRoot(document.getElementById("root") as HTMLElement).render(
+  <StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
+        <GuardedApp />
+      </AuthProvider>
+    </BrowserRouter>
+  </StrictMode>,
+);
