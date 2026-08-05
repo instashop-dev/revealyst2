@@ -1,11 +1,12 @@
 # Deploy pipeline — Cloudflare Workers API, Cloudflare Pages dashboard,
 # RDS provisioning (Terraform), and Vectorize seeding.
 #
-# Every deploy step is gated on the presence of its required secrets via
-# job-level env + step-level `if: env.X != ''` (the `secrets` context is not
-# allowed in `if` conditions). Until the corresponding credentials exist, the
-# deploy steps are skipped. Full secret wiring (OPENAI_API_KEY, DATABASE_URL,
-# Vectorize namespace) is refined per phase.
+# GitHub Actions forbids the `secrets` context inside `if` conditions, and the
+# `env` context is unreliable for job-level gating. So a `gate` job evaluates
+# secret presence in a run step and exposes booleans as job outputs; each
+# deploy job is gated on `needs.gate.outputs.*`. Until the corresponding
+# credentials exist, the deploy jobs are skipped. Full secret wiring
+# (OPENAI_API_KEY, DATABASE_URL, Vectorize namespace) is refined per phase.
 name: Deploy
 
 on:
@@ -24,8 +25,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      cf: ${{ steps.check.outputs.cf }}
+      aws: ${{ steps.check.outputs.aws }}
+      openai: ${{ steps.check.outputs.openai }}
+    steps:
+      - id: check
+        run: |
+          echo "cf=${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}" >> "$GITHUB_OUTPUT"
+          echo "aws=${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_REGION != '' }}" >> "$GITHUB_OUTPUT"
+          echo "openai=${{ secrets.OPENAI_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
+
   # --- Cloudflare Workers API -------------------------------------------
   workers:
+    needs: gate
+    if: ${{ needs.gate.outputs.cf == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -39,12 +55,13 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Deploy worker
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
         working-directory: workers
         run: npx wrangler deploy
 
   # --- Cloudflare Pages dashboard ----------------------------------------
   pages:
+    needs: gate
+    if: ${{ needs.gate.outputs.cf == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -61,12 +78,13 @@ jobs:
         working-directory: web
         run: npm run build
       - name: Publish to Cloudflare Pages
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
         working-directory: web
         run: npx wrangler pages deploy dist --project-name revealyst-web
 
   # --- RDS provisioning via Terraform (files land in Phase 3) ------------
   rds:
+    needs: gate
+    if: ${{ needs.gate.outputs.aws == 'true' && hashFiles('db/terraform/**') != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -79,16 +97,16 @@ jobs:
         with:
           terraform_version: 1.11.x
       - name: Terraform init
-        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' && env.AWS_REGION != '' && hashFiles('db/terraform/**') != '' }}
         working-directory: db/terraform
         run: terraform init
       - name: Terraform apply
-        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' && env.AWS_REGION != '' && hashFiles('db/terraform/**') != '' }}
         working-directory: db/terraform
         run: terraform apply -auto-approve
 
   # --- Vectorize namespace + seed (files land in Phase 3) ----------------
   vectorize:
+    needs: gate
+    if: ${{ needs.gate.outputs.cf == 'true' && needs.gate.outputs.openai == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -106,6 +124,5 @@ jobs:
         working-directory: vectorize
         run: npm run build
       - name: Seed Vectorize namespace
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.OPENAI_API_KEY != '' }}
         working-directory: vectorize
         run: npm run seed
