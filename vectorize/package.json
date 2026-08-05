@@ -1,0 +1,13 @@
+{
+  "name": "@revealyst/vectorize",
+  "version": "0.1.0",
+  "description": "Revealyst Cloudflare Vectorize — prompt-pattern embeddings, namespace config and seed scripts.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "seed": "node dist/seed.js",
+    "clean": "rm -rf dist"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@revealyst/extension",
+  "version": "0.1.0",
+  "description": "Revealyst Chrome extension (Manifest V3) — live prompt scoring sidebar, one-click suggestions, team sync.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@revealyst/ml",
+  "version": "0.1.0",
+  "description": "Revealyst ML assets — training notes, ONNX export scripts and model artifact registry.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  }
+}

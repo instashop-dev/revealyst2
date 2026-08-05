@@ -1,0 +1,13 @@
+{
+  "name": "@revealyst/db",
+  "version": "0.1.0",
+  "description": "Revealyst database — RDS PostgreSQL migrations and migration runner.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "migrate": "node dist/run-migrations.js",
+    "clean": "rm -rf dist"
+  }
+}

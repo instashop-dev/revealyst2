@@ -1,0 +1,20 @@
+# Copy to workers/.dev.vars and fill in — used by `wrangler dev` (local only, git-ignored).
+# Live values live as Worker secrets / GitHub Actions secrets.
+
+# OpenAI — embeddings (text-embedding-3-small) + suggestions (gpt-4o-mini)
+OPENAI_API_KEY=
+
+# Cloudflare
+CLOUDFLARE_ACCOUNT_ID=
+
+# RDS PostgreSQL connection string (postgres://user:pass@host:5432/revealyst)
+DATABASE_URL=
+
+# Vectorize
+VECTORIZE_NAMESPACE=prompt-patterns
+
+# JWT signing secret for magic-link auth (generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+JWT_SECRET=
+
+# Base URL of the web app (for magic-link redirects)
+APP_URL=http://localhost:8788

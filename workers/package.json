@@ -1,0 +1,15 @@
+{
+  "name": "@revealyst/workers",
+  "version": "0.1.0",
+  "description": "Revealyst Cloudflare Workers API — suggestions, events, library, team dashboard, auth (Hono).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "dev": "wrangler dev",
+    "clean": "rm -rf dist"
+  }
+}

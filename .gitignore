@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Test / coverage
+coverage/
+playwright-report/
+test-results/
+
+# Cloudflare
+.wrangler/
+.dev.vars
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local overrides
+*.local
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.log
+.eslintcache
+.idea/
+.vscode/
+
+# Tooling metadata
+.reasonix/
+reasonix.toml

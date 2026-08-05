@@ -1,0 +1,12 @@
+{
+  "name": "@revealyst/web",
+  "version": "0.1.0",
+  "description": "Revealyst web dashboard (Cloudflare Pages, React) — personal progress, team analytics, shared prompt library.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  }
+}
