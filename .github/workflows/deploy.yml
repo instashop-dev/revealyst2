@@ -101,8 +101,7 @@ jobs:
           set -euo pipefail
           if [ -n "$DATABASE_URL" ]; then
             echo "Using user-provided DATABASE_URL (manual provisioning)"
-          else
-            # Automated provisioning — requires rds:CreateDBInstance etc.
+          else            # Automated provisioning — requires rds:CreateDBInstance etc.
             # Deterministic, stable master password derived (HMAC-SHA256) from
             # the stable JWT_SECRET GitHub secret.
             PASSWORD=$(node -e "
@@ -136,6 +135,11 @@ jobs:
             echo "$DATABASE_URL"
             echo "EOF"
           } >> "$GITHUB_ENV"
+          # Diagnostic: print host/port/db only (password stays masked by GH).
+          node -e "
+            const u = new URL(process.env.DATABASE_URL);
+            console.log('DB diagnostic -> host:', u.hostname, '| port:', u.port, '| db:', u.pathname.slice(1));
+          "
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PASSWORD_BASE: ${{ secrets.JWT_SECRET }}
