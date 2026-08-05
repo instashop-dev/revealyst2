@@ -84,7 +84,7 @@ jobs:
   # --- RDS provisioning via Terraform (files land in Phase 3) ------------
   rds:
     needs: gate
-    if: ${{ needs.gate.outputs.aws == 'true' && hashFiles('db/terraform/**') != '' }}
+    if: ${{ needs.gate.outputs.aws == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -96,10 +96,14 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.11.x
+      # db/terraform lands in Phase 3; skip until then (hashFiles is only
+      # allowed in step-level if conditions).
       - name: Terraform init
+        if: ${{ hashFiles('db/terraform/**') != '' }}
         working-directory: db/terraform
         run: terraform init
       - name: Terraform apply
+        if: ${{ hashFiles('db/terraform/**') != '' }}
         working-directory: db/terraform
         run: terraform apply -auto-approve
 
