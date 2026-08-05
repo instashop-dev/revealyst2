@@ -38,8 +38,7 @@ export function getDb(bindings: {
   _DB?: SqlDb;
 }): Promise<SqlDb> {
   if (bindings._DB) return Promise.resolve(bindings._DB);
-  const connectionString =
-    bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
+  const connectionString = bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
   let cached = memo.get(bindings);
   if (!cached) {
     cached = createPostgresDb(connectionString).catch((error) => {
