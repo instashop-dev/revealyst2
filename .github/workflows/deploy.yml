@@ -101,7 +101,6 @@ jobs:
           set -euo pipefail
           if [ -n "$DATABASE_URL" ]; then
             echo "Using user-provided DATABASE_URL (manual provisioning)"
-            printf 'DATABASE_URL=%s\n' "$DATABASE_URL" > .env
           else
             # Automated provisioning — requires rds:CreateDBInstance etc.
             # Deterministic, stable master password derived (HMAC-SHA256) from
@@ -128,28 +127,28 @@ jobs:
                 --query 'DBInstances[0].Endpoint.Address' --output text)
             fi
             ENC_PW=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$PASSWORD")
-            printf 'DATABASE_URL=postgres://revealyst:%s@%s:5432/revealyst\n' "$ENC_PW" "$ENDPOINT" > .env
+            DATABASE_URL="postgres://revealyst:${ENC_PW}@${ENDPOINT}:5432/revealyst"
             echo "RDS endpoint: $ENDPOINT"
           fi
+          # Persist DATABASE_URL safely (heredoc format handles special chars).
+          {
+            echo "DATABASE_URL<<EOF"
+            echo "$DATABASE_URL"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PASSWORD_BASE: ${{ secrets.JWT_SECRET }}
       - name: Run migrations
         run: |
-          set -a
-          source .env
-          set +a
           npm run build -w db
           node db/dist/run-migrations.js
       - name: Set worker secrets
         run: |
-          set -a
-          source .env
-          set +a
           echo "$DATABASE_URL" | npx wrangler secret put DATABASE_URL --config workers/wrangler.toml
           echo "$OPENAI_API_KEY" | npx wrangler secret put OPENAI_API_KEY --config workers/wrangler.toml
-          echo "${JWT_SECRET:-$(openssl rand -hex 32)}" | npx wrangler secret put JWT_SECRET --config workers/wrangler.toml
-          echo "${LIBRARY_ENC_KEY:-$(openssl rand -hex 32)}" | npx wrangler secret put LIBRARY_ENC_KEY --config workers/wrangler.toml
+          echo "$JWT_SECRET" | npx wrangler secret put JWT_SECRET --config workers/wrangler.toml
+          echo "$LIBRARY_ENC_KEY" | npx wrangler secret put LIBRARY_ENC_KEY --config workers/wrangler.toml
 
   # --- Cloudflare Pages dashboard ----------------------------------------
   pages:
