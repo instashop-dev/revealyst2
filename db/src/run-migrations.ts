@@ -1,5 +1,5 @@
 import { Client } from "pg";
-import { setDefaultResultOrder } from "node:dns";
+import { lookup } from "node:dns/promises";
 import { runMigrations } from "./migrations.js";
 
 /**
