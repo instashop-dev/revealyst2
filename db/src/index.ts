@@ -1,6 +1,10 @@
 /**
  * @revealyst/db — Revealyst database package.
  *
- * Phase 1 scaffold: SQL migrations and the migration runner land in Phase 3.
+ * Migrations (SQL files + runner) and the driver-agnostic SqlDb surface used
+ * by the repositories in @revealyst/workers.
  */
+export * from "./migrations.js";
+export * from "./sql-db.js";
+
 export const migrationsDir = "migrations";

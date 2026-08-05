@@ -1,0 +1,24 @@
+name = "revealyst-workers"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# RDS PostgreSQL access from the Worker (postgres.js over TCP).
+# Production hardening: Cloudflare Hyperdrive or Tunnel (see docs/runbook.md).
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "prompt-patterns"
+
+[observability]
+enabled = true
+
+# Non-secret vars — real values come from the deployment workflow / .dev.vars.
+[vars]
+APP_URL = "https://revealyst.pages.dev"
+VECTORIZE_NAMESPACE = "prompt-patterns"
+DEV_MODE = "false"
+RATE_LIMIT_DISABLED = "false"
+
+# Secrets (set via `wrangler secret put` or the deploy workflow):
+#   OPENAI_API_KEY, JWT_SECRET, DATABASE_URL, LIBRARY_ENC_KEY

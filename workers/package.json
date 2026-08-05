@@ -7,9 +7,21 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "dev": "wrangler dev",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^1.5.1",
+    "@revealyst/db": "^0.1.0",
+    "hono": "^4.13.0",
+    "jose": "^6.2.8",
+    "postgres": "^3.4.9",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.4",
+    "pg-mem": "^3.0.14"
   }
 }

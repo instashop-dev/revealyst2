@@ -3,11 +3,28 @@
   "version": "0.1.0",
   "description": "Revealyst database — RDS PostgreSQL migrations and migration runner.",
   "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "migrate": "node dist/run-migrations.js",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.4",
+    "pg-mem": "^3.0.14"
   }
 }
