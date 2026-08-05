@@ -13,12 +13,16 @@ async function main(): Promise<void> {
     console.error("DATABASE_URL is not set");
     process.exit(1);
   }
-  // pg 8.13+ honours sslmode from the connection string over the `ssl`
-  // option — force require (encrypt, no CA verification) so self-signed
-  // certs do not fail the MVP migration; PGSSLMODE=disable opts out of TLS.
+  // pg 8.13+ prefers sslmode from the connection string (with a confusing
+  // libpq-compat mapping), so strip it and pass the ssl option directly:
+  // encryption on, CA verification off for the MVP (the database is reached
+  // over the public internet — see db/terraform/README.md hardening notes).
   const url = new URL(databaseUrl);
-  url.searchParams.set("sslmode", process.env.PGSSLMODE === "disable" ? "disable" : "require");
-  const client = new Client({ connectionString: url.toString() });
+  url.searchParams.delete("sslmode");
+  const client = new Client({
+    connectionString: url.toString(),
+    ssl: process.env.PGSSLMODE === "disable" ? undefined : { rejectUnauthorized: false },
+  });
   await client.connect();
   try {
     const applied = await runMigrations(client);
