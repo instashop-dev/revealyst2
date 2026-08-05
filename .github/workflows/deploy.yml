@@ -170,12 +170,7 @@ jobs:
           else
             echo "Hyperdrive config 'revealyst-pooler' already exists"
           fi
-          ID=$(npx wrangler hyperdrive list --json 2>/dev/null | python3 -c "
-            import json, sys
-            for c in json.load(sys.stdin):
-                if c.get('name') == 'revealyst-pooler':
-                    print(c['id'])
-          ")
+          ID=$(npx wrangler hyperdrive list --json 2>/dev/null | python3 -c "import json,sys; [print(c['id']) for c in json.load(sys.stdin) if c.get('name') == 'revealyst-pooler']")
           echo "HYPERDRIVE_ID=$ID"
           echo "HYPERDRIVE_ID=$ID" >> "$GITHUB_ENV"
 

@@ -7,13 +7,15 @@ import type { SqlDb } from "@revealyst/db";
  */
 export async function createPostgresDb(connectionString: string): Promise<SqlDb> {
   const { default: postgres } = await import("postgres");
-  // SSL required: RDS public endpoints enforce TLS (postgres.js default is
-  // "require" for non-localhost, made explicit here).
+  // Hyperdrive terminates TLS at Cloudflare's edge and its connection string
+  // is already sslmode-tuned, so don't force ssl for it. Direct external
+  // Postgres (DATABASE_URL fallback) requires TLS.
+  const isHyperdrive = /\.hyperdrive\.local/i.test(connectionString);
   const sql = postgres(connectionString, {
     prepare: false,
     max: 5,
     idle_timeout: 20,
-    ssl: "require",
+    ...(isHyperdrive ? {} : { ssl: "require" as const }),
   });
   return {
     async query<T extends object>(text: string, params: unknown[] = []) {
@@ -25,12 +27,22 @@ export async function createPostgresDb(connectionString: string): Promise<SqlDb>
 
 const memo = new WeakMap<object, Promise<SqlDb>>();
 
-/** One pooled connection per Worker instance (isolate), reused across requests. */
-export function getDb(bindings: { DATABASE_URL: string; _DB?: SqlDb }): Promise<SqlDb> {
+/**
+ * One pooled connection per Worker instance (isolate), reused across requests.
+ * Prefers the Hyperdrive proxy (Cloudflare-internal, reliable) and falls back
+ * to the direct DATABASE_URL (e.g. local dev / tests).
+ */
+export function getDb(bindings: {
+  DATABASE_URL: string;
+  HYPERDRIVE?: { connectionString: string };
+  _DB?: SqlDb;
+}): Promise<SqlDb> {
   if (bindings._DB) return Promise.resolve(bindings._DB);
+  const connectionString =
+    bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
   let cached = memo.get(bindings);
   if (!cached) {
-    cached = createPostgresDb(bindings.DATABASE_URL).catch((error) => {
+    cached = createPostgresDb(connectionString).catch((error) => {
       memo.delete(bindings);
       throw error;
     });
