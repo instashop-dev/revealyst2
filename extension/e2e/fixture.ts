@@ -10,7 +10,9 @@ const extensionPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
  * the e2e job.
  */
 export const test = base.extend<{ context: BrowserContext }>({
-  context: async (_fixtures, use) => {
+  // eslint-disable-next-line no-empty-pattern -- Playwright requires the
+  // fixtures arg to be an object destructuring pattern.
+  context: async ({}, use) => {
     const context = await chromium.launchPersistentContext("", {
       // channel chromium = full build (new headless supports extensions;
       // the default headless-shell build does not).
