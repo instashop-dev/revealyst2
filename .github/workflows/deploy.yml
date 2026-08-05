@@ -1,12 +1,14 @@
 # Deploy pipeline — Cloudflare Workers API, Cloudflare Pages dashboard,
-# RDS provisioning (Terraform), and Vectorize seeding.
+# AWS RDS provisioning, and Vectorize seeding.
 #
-# GitHub Actions forbids the `secrets` context inside `if` conditions, and the
-# `env` context is unreliable for job-level gating. So a `gate` job evaluates
-# secret presence in a run step and exposes booleans as job outputs; each
-# deploy job is gated on `needs.gate.outputs.*`. Until the corresponding
-# credentials exist, the deploy jobs are skipped. Full secret wiring
-# (OPENAI_API_KEY, DATABASE_URL, Vectorize namespace) is refined per phase.
+# GitHub Actions forbids the `secrets` context inside `if` conditions, so a
+# `gate` job evaluates secret presence and exposes booleans as job outputs;
+# each deploy job is gated on `needs.gate.outputs.*`.
+#
+# The rds job provisions the RDS instance with the AWS CLI (idempotent; the
+# password lives in AWS Secrets Manager — this repo is public, so no
+# Terraform state file with secrets is committed). db/terraform/main.tf is the
+# equivalent reference IaC for a private backend.
 name: Deploy
 
 on:
@@ -58,6 +60,85 @@ jobs:
         if: ${{ hashFiles('workers/wrangler.toml') != '' }}
         working-directory: workers
         run: npx wrangler deploy
+      - name: Print live URL
+        if: ${{ hashFiles('workers/wrangler.toml') != '' }}
+        working-directory: workers
+        run: |
+          URL=$(npx wrangler deployments list 2>/dev/null | grep -oE 'https://[a-z0-9-]+\.workers\.dev' | head -1 || true)
+          echo "WORKER_URL=$URL"
+          if [ -n "$URL" ]; then
+            curl -sf --max-time 20 "$URL/api/health" && echo " → health OK" || echo "health check failed (worker may still be warming up)"
+          fi
+
+  # --- AWS RDS provisioning + migrations + worker secrets ----------------
+  rds:
+    needs: [gate, workers]
+    if: ${{ needs.gate.outputs.aws == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      LIBRARY_ENC_KEY: ${{ secrets.LIBRARY_ENC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Provision RDS instance (idempotent)
+        run: |
+          set -euo pipefail
+          # Ensure the master password exists in Secrets Manager (created once).
+          if ! aws secretsmanager describe-secret --secret-id revealyst/db-password >/dev/null 2>&1; then
+            aws secretsmanager create-secret \
+              --name revealyst/db-password \
+              --secret-string "$(openssl rand -base64 24)"
+          fi
+          PASSWORD=$(aws secretsmanager get-secret-value --secret-id revealyst/db-password --query SecretString --output text)
+          ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier revealyst \
+            --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null || true)
+          if [ -z "$ENDPOINT" ] || [ "$ENDPOINT" = "None" ]; then
+            aws rds create-db-instance \
+              --db-instance-identifier revealyst \
+              --engine postgres --engine-version 15.7 \
+              --db-instance-class db.t3.micro --allocated-storage 20 \
+              --master-username revealyst --master-user-password "$PASSWORD" \
+              --db-name revealyst --publicly-accessible \
+              --backup-retention-period 7 --storage-encrypted \
+              --no-deletion-protection --tags Key=Service,Value=revealyst
+            echo "RDS instance provisioning — this takes several minutes..."
+            aws rds wait db-instance-available --db-instance-identifier revealyst
+            ENDPOINT=$(aws rds describe-db-instances --db-instance-identifier revealyst \
+              --query 'DBInstances[0].Endpoint.Address' --output text)
+          fi
+          ENC_PW=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$PASSWORD")
+          {
+            echo "DATABASE_URL=postgres://revealyst:${ENC_PW}@${ENDPOINT}:5432/revealyst"
+          } > .env
+          echo "RDS endpoint: $ENDPOINT"
+      - name: Run migrations
+        run: |
+          set -a
+          source .env
+          set +a
+          npm run build -w db
+          node db/dist/run-migrations.js
+      - name: Set worker secrets
+        run: |
+          set -a
+          source .env
+          set +a
+          echo "$DATABASE_URL" | npx wrangler secret put DATABASE_URL --config workers/wrangler.toml
+          echo "$OPENAI_API_KEY" | npx wrangler secret put OPENAI_API_KEY --config workers/wrangler.toml
+          echo "${JWT_SECRET:-$(openssl rand -hex 32)}" | npx wrangler secret put JWT_SECRET --config workers/wrangler.toml
+          echo "${LIBRARY_ENC_KEY:-$(openssl rand -hex 32)}" | npx wrangler secret put LIBRARY_ENC_KEY --config workers/wrangler.toml
 
   # --- Cloudflare Pages dashboard ----------------------------------------
   pages:
@@ -83,33 +164,7 @@ jobs:
         working-directory: web
         run: npx wrangler pages deploy dist --project-name revealyst-web
 
-  # --- RDS provisioning via Terraform (files land in Phase 3) ------------
-  rds:
-    needs: gate
-    if: ${{ needs.gate.outputs.aws == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.11.x
-      # db/terraform lands in Phase 3; skip until then (hashFiles is only
-      # allowed in step-level if conditions).
-      - name: Terraform init
-        if: ${{ hashFiles('db/terraform/**') != '' }}
-        working-directory: db/terraform
-        run: terraform init
-      - name: Terraform apply
-        if: ${{ hashFiles('db/terraform/**') != '' }}
-        working-directory: db/terraform
-        run: terraform apply -auto-approve
-
-  # --- Vectorize namespace + seed (files land in Phase 3) ----------------
+  # --- Vectorize namespace + seed ----------------------------------------
   vectorize:
     needs: gate
     if: ${{ needs.gate.outputs.cf == 'true' && needs.gate.outputs.openai == 'true' }}
@@ -126,6 +181,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Ensure namespace exists
+        if: ${{ hashFiles('vectorize/src/seed.ts') != '' }}
+        working-directory: vectorize
+        run: npx wrangler vectorize create prompt-patterns --dimensions=1536 --metric=cosine || true
       - name: Build vectorize package
         working-directory: vectorize
         run: npm run build

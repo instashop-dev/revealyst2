@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { apiName } from "../src/index";
+import app from "../src/index.js";
 
-describe("workers package scaffold", () => {
-  it("exposes the package name", () => {
-    expect(apiName).toBe("revealyst-workers");
+describe("workers package", () => {
+  it("exposes the Hono app", () => {
+    expect(typeof app.fetch).toBe("function");
+    expect(app.routes.length).toBeGreaterThan(0);
   });
 });

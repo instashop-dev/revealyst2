@@ -67,9 +67,11 @@ export class OnnxScoringAdapter implements ScoringAdapter {
 
   private async tryLoad(): Promise<TransformersPipeline | null> {
     try {
-      // Dynamic import with @vite-ignore so bundlers (Vite/CRXJS, esbuild) do
-      // not try to statically resolve the optional peer at build time.
-      const mod = (await import(/* @vite-ignore */ "@xenova/transformers")) as {
+      // Dynamic import via a variable specifier: TS/Vite do not statically
+      // resolve it, so the optional @xenova/transformers peer can be absent at
+      // build time and is loaded (or fails) at runtime.
+      const specifier = "@xenova/transformers";
+      const mod = (await import(/* @vite-ignore */ specifier)) as {
         pipeline?: (
           task: string,
           model: string,
