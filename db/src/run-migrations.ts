@@ -19,13 +19,14 @@ async function main(): Promise<void> {
   // over the public internet — see db/terraform/README.md hardening notes).
   const url = new URL(databaseUrl);
   url.searchParams.delete("sslmode");
+  // `family` is a supported net option that pg forwards but doesn't type.
   const client = new Client({
     connectionString: url.toString(),
     // GitHub runners lack IPv6 egress; the cloud Postgres resolves to IPv6
     // first (ENETUNREACH), so prefer IPv4.
     family: 4,
     ssl: process.env.PGSSLMODE === "disable" ? undefined : { rejectUnauthorized: false },
-  });
+  } as ConstructorParameters<typeof Client>[0] & { family?: number });
   await client.connect();
   try {
     const applied = await runMigrations(client);
