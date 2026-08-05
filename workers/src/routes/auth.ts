@@ -2,18 +2,21 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { createRepos } from "../db/index.js";
 import { getDb } from "../db.js";
+import { createRateLimiter, rateLimit } from "../rate-limit.js";
 import { requireAuth, signMagicToken, signSessionToken } from "../auth.js";
 import type { AppEnv } from "../env.js";
 
 const magicRequest = z.object({ email: z.string().email() });
 const verifyRequest = z.object({ token: z.string().min(1) });
 const errorResponse = z.object({ error: z.string(), message: z.string() });
+const magicLimiter = rateLimit(createRateLimiter(5, 60_000), 5);
 const userResponse = z.object({ id: z.string(), email: z.string(), plan: z.string() });
 
 const routes = {
   magic: createRoute({
     method: "post",
     path: "/api/auth/magic",
+    middleware: [magicLimiter],
     request: { body: { content: { "application/json": { schema: magicRequest } } } },
     responses: {
       200: {
@@ -79,13 +82,14 @@ authRoutes.openapi(routes.magic, async (c) => {
   const magicToken = await signMagicToken(user.id, user.email, c.env.JWT_SECRET);
   const devLink = `${c.env.APP_URL}/auth/verify?token=${magicToken}`;
 
+  // NEVER log the link outside dev — magic links are working credentials.
   // TODO(SMTP): wire a transactional email provider (Resend/Cloudflare Email)
-  // in production; the link is logged + returned only in DEV_MODE.
-  console.log(`[auth] magic link for ${email}: ${devLink}`);
-  return c.json(
-    c.env.DEV_MODE ? { message: "link sent", dev_link: devLink } : { message: "link sent" },
-    200,
-  );
+  // in production; the link is returned only in DEV_MODE.
+  if (c.env.DEV_MODE === "true") {
+    console.log(`[auth] dev magic link for ${email}: ${devLink}`);
+    return c.json({ message: "link sent", dev_link: devLink }, 200);
+  }
+  return c.json({ message: "link sent" }, 200);
 });
 
 authRoutes.openapi(routes.verify, async (c) => {
