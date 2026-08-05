@@ -161,6 +161,23 @@ jobs:
       - name: Set worker database secret
         run: |
           echo "$DATABASE_URL" | npx wrangler secret put DATABASE_URL --config workers/wrangler.toml
+      - name: Ensure Hyperdrive config (Supabase pooler)
+        run: |
+          set -euo pipefail
+          # Idempotent: create only if the config doesn't already exist.
+          if ! npx wrangler hyperdrive list --json 2>/dev/null | grep -q '"name": *"revealyst-pooler"'; then
+            npx wrangler hyperdrive create revealyst-pooler               --connection-string="$DATABASE_URL"
+          else
+            echo "Hyperdrive config 'revealyst-pooler' already exists"
+          fi
+          ID=$(npx wrangler hyperdrive list --json 2>/dev/null | python3 -c "
+            import json, sys
+            for c in json.load(sys.stdin):
+                if c.get('name') == 'revealyst-pooler':
+                    print(c['id'])
+          ")
+          echo "HYPERDRIVE_ID=$ID"
+          echo "HYPERDRIVE_ID=$ID" >> "$GITHUB_ENV"
 
   # --- Cloudflare Pages dashboard ----------------------------------------
   pages:
