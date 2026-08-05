@@ -62,6 +62,17 @@ jobs:
         if: ${{ hashFiles('workers/wrangler.toml') != '' }}
         working-directory: workers
         run: npx wrangler deploy
+      - name: Set API secrets
+        if: ${{ hashFiles('workers/wrangler.toml') != '' }}
+        working-directory: workers
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          LIBRARY_ENC_KEY: ${{ secrets.LIBRARY_ENC_KEY }}
+        run: |
+          echo "$OPENAI_API_KEY" | npx wrangler secret put OPENAI_API_KEY
+          echo "$JWT_SECRET" | npx wrangler secret put JWT_SECRET
+          echo "$LIBRARY_ENC_KEY" | npx wrangler secret put LIBRARY_ENC_KEY
       - name: Print live URL
         if: ${{ hashFiles('workers/wrangler.toml') != '' }}
         working-directory: workers
@@ -147,12 +158,9 @@ jobs:
         run: |
           npm run build -w db
           node db/dist/run-migrations.js
-      - name: Set worker secrets
+      - name: Set worker database secret
         run: |
           echo "$DATABASE_URL" | npx wrangler secret put DATABASE_URL --config workers/wrangler.toml
-          echo "$OPENAI_API_KEY" | npx wrangler secret put OPENAI_API_KEY --config workers/wrangler.toml
-          echo "$JWT_SECRET" | npx wrangler secret put JWT_SECRET --config workers/wrangler.toml
-          echo "$LIBRARY_ENC_KEY" | npx wrangler secret put LIBRARY_ENC_KEY --config workers/wrangler.toml
 
   # --- Cloudflare Pages dashboard ----------------------------------------
   pages:
