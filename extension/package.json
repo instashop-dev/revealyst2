@@ -5,8 +5,29 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "vite build",
     "test": "vitest run",
+    "dev": "vite",
+    "e2e": "playwright test",
+    "package": "vite build && node scripts/zip.mjs",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@revealyst/scoring": "*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.1",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/chrome": "^0.2.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "archiver": "^6.0.2",
+    "happy-dom": "^20.11.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.0"
   }
 }
