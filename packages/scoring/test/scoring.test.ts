@@ -1,0 +1,172 @@
+import { describe, expect, it } from "vitest";
+import {
+  RuleScoringEngine,
+  bandFor,
+  createScoringEngine,
+  flagInfo,
+  scoreExamples,
+  scoreOutputFormat,
+  scoreRoleClarity,
+} from "../src/index";
+
+const engine = new RuleScoringEngine();
+
+describe("band colours (spec: red 0-49, yellow 50-69, green 70-100)", () => {
+  it("maps boundaries correctly", () => {
+    expect(bandFor(0)).toBe("red");
+    expect(bandFor(49)).toBe("red");
+    expect(bandFor(50)).toBe("yellow");
+    expect(bandFor(69)).toBe("yellow");
+    expect(bandFor(70)).toBe("green");
+    expect(bandFor(100)).toBe("green");
+  });
+});
+
+describe("vague prompt", () => {
+  const result = engine.scoreSync("Help me write something good.");
+
+  it("scores in the red band", () => {
+    expect(result.score).toBeLessThan(50);
+    expect(bandFor(result.score)).toBe("red");
+  });
+
+  it("flags the expected deficiencies", () => {
+    expect(result.flags).toEqual(
+      expect.arrayContaining([
+        "low_specificity",
+        "vague_context",
+        "missing_role",
+        "missing_output_format",
+        "no_examples",
+      ]),
+    );
+  });
+
+  it("has a full 5-dimension breakdown in the spec shape", () => {
+    expect(result.breakdown).toMatchObject({
+      specificity: expect.any(Number),
+      context: expect.any(Number),
+      role_clarity: expect.any(Number),
+      output_format: expect.any(Number),
+      examples_included: expect.any(Number),
+    });
+    for (const v of Object.values(result.breakdown)) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+describe("role-rich, well-specified prompt (spec §5.3 example shape)", () => {
+  const prompt =
+    "Act as a B2B marketing strategist. Write a LinkedIn post for our SaaS product targeting CTOs of support teams, " +
+    "in 150 words with 3 bullet points and a short title. We sell analytics for customer support teams and currently " +
+    "have 400 customers. For example: here is our product page https://revealyst.com. Output JSON with fields title, body, bullets.";
+
+  const result = engine.scoreSync(prompt);
+
+  it("scores in the green band", () => {
+    expect(result.score).toBeGreaterThanOrEqual(70);
+    expect(bandFor(result.score)).toBe("green");
+  });
+
+  it("gives full marks for role clarity and output format", () => {
+    expect(result.breakdown.role_clarity).toBe(100);
+    expect(result.breakdown.output_format).toBe(100);
+  });
+
+  it("flags nothing", () => {
+    expect(result.flags).toHaveLength(0);
+  });
+});
+
+describe("missing output format", () => {
+  const result = engine.scoreSync("Explain quantum computing to me.");
+
+  it("flags missing_output_format and scores output_format low", () => {
+    expect(result.flags).toContain("missing_output_format");
+    expect(result.breakdown.output_format).toBeLessThan(50);
+  });
+});
+
+describe("role clarity heuristics", () => {
+  it("detects 'act as'", () => {
+    expect(scoreRoleClarity("Act as a senior copywriter and draft this.")).toBe(100);
+  });
+  it("detects 'you are'", () => {
+    expect(scoreRoleClarity("You are a financial analyst.")).toBe(95);
+  });
+  it("detects 'as a' with a role but not filler phrases", () => {
+    expect(scoreRoleClarity("As a content marketer, outline the plan.")).toBe(85);
+    expect(scoreRoleClarity("Use this as a result of our tests.")).toBe(25);
+  });
+});
+
+describe("output format heuristics", () => {
+  it("recognises explicit formats", () => {
+    expect(scoreOutputFormat("Respond in JSON.")).toBe(100);
+    expect(scoreOutputFormat("Give me a bulleted list.")).toBe(100);
+  });
+  it("recognises structural hints", () => {
+    expect(scoreOutputFormat("Summarise in a short email.")).toBe(80);
+  });
+  it("recognises length constraints", () => {
+    expect(scoreOutputFormat("Answer in 200 words.")).toBe(60);
+  });
+});
+
+describe("examples heuristic", () => {
+  it("scores 10 with no example markers", () => {
+    expect(scoreExamples("Just do the thing.")).toBe(10);
+  });
+  it("scores 60+ with one marker", () => {
+    expect(scoreExamples("Give feedback. For example, like this: ...")).toBeGreaterThanOrEqual(60);
+  });
+});
+
+describe("long prompt truncation (spec §7: >4000 tokens → score first 1000 chars)", () => {
+  const longPrompt = "Describe our product roadmap. " + "a".repeat(17000);
+  const result = engine.scoreSync(longPrompt);
+
+  it("marks the prompt as truncated and flags too_long", () => {
+    expect(result.meta.truncated).toBe(true);
+    expect(result.meta.estimatedTokens).toBeGreaterThan(4000);
+    expect(result.flags).toContain("too_long");
+  });
+});
+
+describe("too short prompt", () => {
+  it("flags too_short", () => {
+    expect(engine.scoreSync("hi").flags).toContain("too_short");
+  });
+});
+
+describe("determinism", () => {
+  it("produces identical results for identical input", () => {
+    const prompt = "Help me write something good.";
+    expect(engine.scoreSync(prompt)).toEqual(engine.scoreSync(prompt));
+  });
+});
+
+describe("flag metadata", () => {
+  it("exposes fix hints for every canonical flag", () => {
+    expect(flagInfo("missing_role")?.fixHint).toContain("Act as");
+    expect(flagInfo("missing_output_format")?.fixHint).toContain("format");
+    expect(flagInfo("unknown_flag")).toBeUndefined();
+  });
+});
+
+describe("factory", () => {
+  it("creates a rule engine by default", () => {
+    const e = createScoringEngine();
+    expect(e.engineKind).toBe("rules");
+  });
+
+  it("creates an ONNX adapter when a model config is given (falls back to rules)", async () => {
+    const e = createScoringEngine({ modelId: "revealyst/prompt-scorer-v1" });
+    expect(e.engineKind).toBe("onnx");
+    // No model artifact exists and @xenova/transformers is optional → rule fallback
+    const result = await e.score("Help me write something good.");
+    expect(result.meta.engine).toBe("rules");
+  });
+});
