@@ -7,7 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "dev": "wrangler dev",
     "clean": "rm -rf dist"
