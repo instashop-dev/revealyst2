@@ -1,4 +1,5 @@
 import { Client } from "pg";
+import { setDefaultResultOrder } from "node:dns";
 import { runMigrations } from "./migrations.js";
 
 /**
@@ -8,6 +9,10 @@ import { runMigrations } from "./migrations.js";
  *   DATABASE_URL=postgres://... node dist/run-migrations.js
  */
 async function main(): Promise<void> {
+  // GitHub runners lack IPv6 egress and cloud Postgres hosts commonly resolve
+  // to IPv6 first (ENETUNREACH) — prefer IPv4 for all lookups.
+  setDefaultResultOrder("ipv4first");
+
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.error("DATABASE_URL is not set");
@@ -19,14 +24,10 @@ async function main(): Promise<void> {
   // over the public internet — see db/terraform/README.md hardening notes).
   const url = new URL(databaseUrl);
   url.searchParams.delete("sslmode");
-  // `family` is a supported net option that pg forwards but doesn't type.
   const client = new Client({
     connectionString: url.toString(),
-    // GitHub runners lack IPv6 egress; the cloud Postgres resolves to IPv6
-    // first (ENETUNREACH), so prefer IPv4.
-    family: 4,
     ssl: process.env.PGSSLMODE === "disable" ? undefined : { rejectUnauthorized: false },
-  } as ConstructorParameters<typeof Client>[0] & { family?: number });
+  });
   await client.connect();
   try {
     const applied = await runMigrations(client);
