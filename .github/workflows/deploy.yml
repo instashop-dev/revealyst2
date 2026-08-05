@@ -181,6 +181,10 @@ jobs:
       - name: Build web app
         working-directory: web
         run: npm run build
+      - name: Ensure Pages project exists
+        if: ${{ hashFiles('web/index.html') != '' }}
+        working-directory: web
+        run: npx wrangler pages project create revealyst-web --production-branch main || true
       - name: Publish to Cloudflare Pages
         if: ${{ hashFiles('web/index.html') != '' }}
         working-directory: web
