@@ -26,8 +26,10 @@ async function main(): Promise<void> {
   const host = url.hostname;
   if (host && !/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
     try {
-      const { address } = await lookup(host, { family: 4 });
-      url.hostname = address;
+      const addresses = await lookup(host, { all: true });
+      const ipv4 = addresses.find((a) => a.family === 4);
+      if (ipv4) url.hostname = ipv4.address;
+      else console.log(`[db] warning: no IPv4 record for ${host} (IPv6-only?)`);
     } catch {
       // keep the hostname — the connect error will be more informative
     }
