@@ -1,6 +1,6 @@
 # Revealyst
 
-*Turn every prompt into a step forward.*
+_Turn every prompt into a step forward._
 
 Revealyst is a browser extension + web dashboard that sits between non-technical
 employees and any LLM (ChatGPT, Claude, Gemini). It **scores prompts in real
@@ -12,15 +12,15 @@ Product spec: [`.reasonix/attachments/clipboard-20260805-151053.039642-000001.md
 
 ## Monorepo layout
 
-| Directory | What it is |
-|---|---|
+| Directory          | What it is                                                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `packages/scoring` | Shared prompt scoring engine (rule-based + ONNX adapter w/ fallback). Framework-free, used by extension and web. |
-| `extension/` | Chrome extension (Manifest V3) — React sidebar, content scripts, service worker. |
-| `web/` | React dashboard, hosted on Cloudflare Pages. |
-| `workers/` | Cloudflare Workers API (Hono) — suggestions, events, library, team dashboard, auth. |
-| `db/` | RDS PostgreSQL migrations + migration runner. |
-| `vectorize/` | Cloudflare Vectorize namespace config + prompt-pattern seed/embedding scripts. |
-| `ml/` | ML assets — training notes, ONNX export scripts, model registry. |
+| `extension/`       | Chrome extension (Manifest V3) — React sidebar, content scripts, service worker.                                 |
+| `web/`             | React dashboard, hosted on Cloudflare Pages.                                                                     |
+| `workers/`         | Cloudflare Workers API (Hono) — suggestions, events, library, team dashboard, auth.                              |
+| `db/`              | RDS PostgreSQL migrations + migration runner.                                                                    |
+| `vectorize/`       | Cloudflare Vectorize namespace config + prompt-pattern seed/embedding scripts.                                   |
+| `ml/`              | ML assets — training notes, ONNX export scripts, model registry.                                                 |
 
 ## Prerequisites
 

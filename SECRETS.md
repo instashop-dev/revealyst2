@@ -6,15 +6,15 @@ it is stored. **Never commit real secrets.** Local dev secrets go in
 
 ## GitHub Actions secrets (repo-level)
 
-| Secret | Purpose | Where to get it |
-|---|---|---|
-| `CLOUDFLARE_API_TOKEN` | Deploy Workers/Pages, manage Vectorize | Cloudflare dashboard → My Profile → API Tokens → Create Token. Permissions: `Workers Scripts:Edit`, `Workers KV:Edit`, `Pages:Edit`, `Vectorize:Edit`, `Account Settings:Read`. |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier | Cloudflare dashboard → right sidebar of any page (not secret, but kept in secrets for convenience). |
-| `OPENAI_API_KEY` | Embeddings + suggestion generation | platform.openai.com → API keys |
-| `AWS_ACCESS_KEY_ID` | Terraform provisioning of RDS | AWS IAM → create user with a scoped policy (EC2/RDS full) → access keys |
-| `AWS_SECRET_ACCESS_KEY` | Terraform provisioning of RDS | Same IAM user |
-| `AWS_REGION` | RDS region, e.g. `us-east-1` | — |
-| `DATABASE_URL` | Worker → RDS connection | Produced by Terraform after first apply; set afterwards |
+| Secret                  | Purpose                                | Where to get it                                                                                                                                                                 |
+| ----------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Deploy Workers/Pages, manage Vectorize | Cloudflare dashboard → My Profile → API Tokens → Create Token. Permissions: `Workers Scripts:Edit`, `Workers KV:Edit`, `Pages:Edit`, `Vectorize:Edit`, `Account Settings:Read`. |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier          | Cloudflare dashboard → right sidebar of any page (not secret, but kept in secrets for convenience).                                                                             |
+| `OPENAI_API_KEY`        | Embeddings + suggestion generation     | platform.openai.com → API keys                                                                                                                                                  |
+| `AWS_ACCESS_KEY_ID`     | Terraform provisioning of RDS          | AWS IAM → create user with a scoped policy (EC2/RDS full) → access keys                                                                                                         |
+| `AWS_SECRET_ACCESS_KEY` | Terraform provisioning of RDS          | Same IAM user                                                                                                                                                                   |
+| `AWS_REGION`            | RDS region, e.g. `us-east-1`           | —                                                                                                                                                                               |
+| `DATABASE_URL`          | Worker → RDS connection                | Produced by Terraform after first apply; set afterwards                                                                                                                         |
 
 ### Setting secrets
 
