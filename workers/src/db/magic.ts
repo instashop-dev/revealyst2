@@ -9,22 +9,12 @@ import type { SqlDb } from "@revealyst/db";
 export function createMagicRepo(db: SqlDb) {
   return {
     async insert(jti: string, userId: string, expiresAt: string): Promise<void> {
-      // Opportunistic cleanup keeps the table small (links live ≤15 min) and
-      // prunes never-verified accounts: users created >24h ago with no active
-      // magic link and no team membership are spam rows, not real users.
+      // Opportunistic cleanup keeps the table small (links live ≤15 min).
+      // NOTE: unverified-user pruning is intentionally NOT done here — inline
+      // deletes can hit FK rows (feedback/library) or active users with
+      // consumed links (no sessions table), so it needs a careful scheduled
+      // job (see docs/runbook.md — known hardening item).
       await db.query("DELETE FROM magic_link_tokens WHERE expires_at < now()");
-      // Prune never-verified accounts: users created >24h ago with no active
-      // magic link and no team membership are spam rows, not real users.
-      const stale = await db.query<{ id: string }>(
-        `SELECT id FROM users
-         WHERE created_at < now() - interval '1 day'
-           AND id NOT IN (SELECT user_id FROM magic_link_tokens)
-           AND id NOT IN (SELECT user_id FROM team_members)
-         LIMIT 100`,
-      );
-      for (const row of stale.rows) {
-        await db.query("DELETE FROM users WHERE id = $1", [row.id]);
-      }
       await db.query(
         "INSERT INTO magic_link_tokens (jti, user_id, expires_at) VALUES ($1, $2, $3)",
         [jti, userId, expiresAt],
