@@ -1,6 +1,6 @@
 import type { SqlDb } from "@revealyst/db";
 
-/** Client-side cap on any single DB query (Hyperdrive half-open sockets hang without it). */
+/** Client-side cap on any single DB query (stale sockets hang without it). */
 export const QUERY_TIMEOUT_MS = 10_000;
 
 class QueryTimeoutError extends Error {
@@ -26,96 +26,86 @@ function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
   });
 }
 
+/** SqlDb with an explicit close, for per-request connection lifecycle. */
+export interface RequestDb extends SqlDb {
+  end(): Promise<void>;
+}
+
 /**
- * postgres.js-backed SqlDb for the Worker runtime. Imported lazily (postgres
- * is heavy and only needed on DB routes); `prepare: false` keeps the socket
- * layer compatible with Cloudflare Workers (nodejs_compat).
- *
- * Connection strategy (learned the hard way on the live worker):
- * - `idle_timeout: 0` → **per-request connections**. Hyperdrive closes idle
- *   sockets while an isolate is frozen; postgres.js then writes to a
- *   half-open socket and hangs (observed: intermittent 10s+ stalls, 5+ min
- *   hangs before the timeout guard). Fresh connections per query eliminate
- *   that class entirely (~1-2s connect cost per request, fine for this API).
- * - Every query is race-guarded by QUERY_TIMEOUT_MS; on timeout the pool is
- *   torn down so the next getDb() creates fresh connections.
- * - Startup GUCs (statement/lock/idle-in-transaction timeouts) abort hung
- *   queries server-side on the direct-DATABASE_URL path; Hyperdrive may not
- *   forward them, which is why the client-side timeout is the primary guard.
+ * Create a postgres.js connection for ONE request. Cloudflare Workers
+ * forbids sharing socket I/O across requests — a connection created in one
+ * request handler cannot be written to from another ("Cannot perform I/O on
+ * behalf of a different request"). Pooling across requests therefore caused
+ * intermittent 500s and hangs on the live worker. Every request gets its own
+ * connection (1-2s connect cost via Hyperdrive, acceptable for this API),
+ * which `closeRequestDb()` tears down after the response.
  */
-export async function createPostgresDb(connectionString: string, poolKey: string): Promise<SqlDb> {
-  const { default: postgres } = await import("postgres");
-  // Hyperdrive terminates TLS at Cloudflare's edge and its connection string
-  // is already sslmode-tuned, so don't force ssl for it. Direct external
-  // Postgres (DATABASE_URL fallback) requires TLS.
-  const isHyperdrive = /\.hyperdrive\.local/i.test(connectionString);
-  // postgres.js sends `parameters` in the startup packet at runtime, but its
-  // types omit it — cast to add the connection GUCs. They are honored on the
-  // direct-DATABASE_URL path; Hyperdrive may not forward them, which is why
-  // the client-side timeout above is the primary guard.
-  const sql = postgres(connectionString, {
-    prepare: false,
-    max: 5,
-    idle_timeout: 0,
-    connect_timeout: 10,
-    parameters: {
-      statement_timeout: "10000",
-      lock_timeout: "8000",
-      idle_in_transaction_session_timeout: "10000",
-      application_name: "revealyst-workers",
-    },
-    ...(isHyperdrive ? {} : { ssl: "require" as const }),
-  } as Parameters<typeof postgres>[1] & { parameters: Record<string, string> });
-  return {
-    async query<T extends object>(text: string, params: unknown[] = []) {
-      try {
+function createPostgresDb(connectionString: string): Promise<RequestDb> {
+  return import("postgres").then(({ default: postgres }) => {
+    // Hyperdrive terminates TLS at Cloudflare's edge; its connection string
+    // is sslmode-tuned, so don't force ssl. Direct external Postgres
+    // (DATABASE_URL fallback) requires TLS.
+    const isHyperdrive = /\.hyperdrive\.local/i.test(connectionString);
+    // postgres.js sends `parameters` in the startup packet at runtime, but
+    // its types omit it — cast to add the connection GUCs.
+    const sql = postgres(connectionString, {
+      prepare: false,
+      max: 1,
+      idle_timeout: 0,
+      connect_timeout: 10,
+      parameters: {
+        statement_timeout: "10000",
+        lock_timeout: "8000",
+        idle_in_transaction_session_timeout: "10000",
+        application_name: "revealyst-workers",
+      },
+      ...(isHyperdrive ? {} : { ssl: "require" as const }),
+    } as Parameters<typeof postgres>[1] & { parameters: Record<string, string> });
+
+    return {
+      async query<T extends object>(text: string, params: unknown[] = []) {
         const rows = await withTimeout(
           () => sql.unsafe<T[]>(text, params as never[]),
           QUERY_TIMEOUT_MS,
         );
         return { rows };
-      } catch (error) {
-        if (error instanceof QueryTimeoutError) {
-          // Drop the dead pool so the next request starts fresh.
-          try {
-            await sql.end({ timeout: 1 });
-          } catch {
-            // already closed
-          }
-          globalPool.delete(poolKey);
+      },
+      async end() {
+        try {
+          await sql.end({ timeout: 1 });
+        } catch {
+          // already closed
         }
-        throw error;
-      }
-    },
-  };
+      },
+    };
+  });
 }
 
-const globalPool = new Map<string, Promise<SqlDb>>();
-
-/**
- * One pooled connection per connection string per isolate, reused across
- * requests. Prefers the Hyperdrive proxy (Cloudflare-internal, reliable) and
- * falls back to the direct DATABASE_URL (e.g. local dev / tests).
- *
- * Cache is module-global keyed by connection string — NOT keyed on the
- * bindings object, because Cloudflare creates a fresh env object per request;
- * a WeakMap keyed on env would spawn a new pool (and up to `max` sockets)
- * per request and exhaust the upstream connection limit.
- */
-export function getDb(bindings: {
+export interface DbBindings {
   DATABASE_URL: string;
   HYPERDRIVE?: { connectionString: string };
   _DB?: SqlDb;
-}): Promise<SqlDb> {
-  if (bindings._DB) return Promise.resolve(bindings._DB);
+}
+
+// One connection per request, keyed on the per-request env object (Cloudflare
+// creates a fresh env per request, so this is naturally request-scoped).
+const perRequest = new WeakMap<object, Promise<RequestDb>>();
+
+export function getDb(bindings: DbBindings): Promise<RequestDb> {
+  if (bindings._DB) return Promise.resolve(bindings._DB as RequestDb);
   const connectionString = bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
-  let cached = globalPool.get(connectionString);
-  if (!cached) {
-    cached = createPostgresDb(connectionString, connectionString).catch((error) => {
-      globalPool.delete(connectionString);
-      throw error;
-    });
-    globalPool.set(connectionString, cached);
+  let db = perRequest.get(bindings);
+  if (!db) {
+    db = createPostgresDb(connectionString);
+    perRequest.set(bindings, db);
   }
-  return cached;
+  return db;
+}
+
+/** Close this request's connection (called by middleware after the response). */
+export function closeRequestDb(bindings: DbBindings): Promise<void> {
+  const db = perRequest.get(bindings);
+  if (!db) return Promise.resolve();
+  perRequest.delete(bindings);
+  return db.then((d) => d.end()).catch(() => {});
 }
