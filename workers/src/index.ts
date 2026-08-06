@@ -33,6 +33,8 @@ app.get("/api/health", async (c) => {
   };
   // Deep check: /api/health?db=1 runs a DB round-trip (SELECT 1) so ops can
   // verify the Hyperdrive→Postgres path from anywhere.
+  // Deep check: /api/health?db=1 runs a DB round-trip (SELECT 1) so ops can
+  // verify the Hyperdrive→Postgres path from anywhere.
   if (c.req.query("db") === "1") {
     try {
       const db = await getDb(c.env);

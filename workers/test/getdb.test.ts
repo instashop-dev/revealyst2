@@ -3,7 +3,10 @@ import { closeRequestDb, getDb } from "../src/db.js";
 
 // createPostgresDb lazily imports "postgres"; stub it so no real socket opens.
 vi.mock("postgres", () => ({
-  default: vi.fn(() => ({ unsafe: vi.fn(), end: vi.fn().mockResolvedValue(undefined) })),
+  default: vi.fn(() => ({
+    unsafe: vi.fn(() => new Promise(() => {})), // queries hang by default
+    end: vi.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 const { default: postgres } = await import("postgres");
@@ -44,19 +47,13 @@ describe("getDb per-request connection lifecycle", () => {
     expect(postgresMock.mock.calls[callsBefore]?.[0]).toBe(directConn);
   });
 
-  it("configures self-healing timeouts", async () => {
+  it("configures timeouts and no cross-request pooling", async () => {
     const callsBefore = postgresMock.mock.calls.length;
     await getDb({ DATABASE_URL: directConn });
-    const options = postgresMock.mock.calls[callsBefore]?.[1] as Record<string, unknown> & {
-      parameters?: Record<string, string>;
-    };
+    const options = postgresMock.mock.calls[callsBefore]?.[1] as Record<string, unknown>;
     expect(options.connect_timeout).toBe(10);
     expect(options.max).toBe(1);
-    expect(options.parameters).toMatchObject({
-      statement_timeout: "10000",
-      lock_timeout: "8000",
-      idle_in_transaction_session_timeout: "10000",
-    });
+    expect(options.prepare).toBe(false);
   });
 
   it("returns the test seam _DB without touching postgres", async () => {
@@ -71,20 +68,21 @@ describe("getDb per-request connection lifecycle", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("times out a hung query", async () => {
+  it("times out a hung query and retries once on a fresh connection", async () => {
     vi.useFakeTimers();
     try {
+      const callsBefore = postgresMock.mock.calls.length;
       const db = await getDb({ DATABASE_URL: "postgres://hang:5432/x" });
-      const sql = postgresMock.mock.results.at(-1)?.value as {
-        unsafe: ReturnType<typeof vi.fn>;
-        end: ReturnType<typeof vi.fn>;
-      };
-      sql.unsafe.mockImplementation(() => new Promise(() => {})); // never resolves
 
       const query = db.query("SELECT 1");
       const assertion = expect(query).rejects.toThrow(/timed out/);
-      await vi.advanceTimersByTimeAsync(10_000);
+      // attempt 1 times out at 15s, retries on a fresh connection, attempt 2
+      // times out at 15s too (mock hangs forever)
+      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(15_000);
       await assertion;
+      // two pool instances were created (initial + retry)
+      expect(postgresMock.mock.calls.length - callsBefore).toBe(2);
     } finally {
       vi.useRealTimers();
     }

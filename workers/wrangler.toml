@@ -9,7 +9,7 @@ compatibility_flags = ["nodejs_compat"]
 # removed, db.ts falls back to DATABASE_URL.
 [[hyperdrive]]
 binding = "HYPERDRIVE"
-id = "22d092c611a54d648a45d3565bdce80a"
+id = "b5c9c163223546739c6a51bf3cf365f7"
 
 [[vectorize]]
 binding = "VECTORIZE"
