@@ -124,10 +124,13 @@ security model, key decisions).
 
 ### Phase 6 — close out (this PR)
 
-- [ ] CI green on the PR; merge to `main`
-- [ ] Deploy green end-to-end; post-deploy live smoke (`smoke` job + manual `e2e/api-smoke.mjs`)
-- [ ] Verify magic-link email delivery in the SES console (sandbox: verify a recipient first)
-- [ ] `v0.1.0` tag + GitHub release; branch cleanup sweep (delete merged branches)
+- [x] CI green on the PR; merged to `main`
+- [x] Deploy green end-to-end incl. the `smoke` job; post-deploy live smoke PASS
+- [x] `v0.1.0` tag + GitHub release; branch cleanup sweep (done — only `main` remains)
+- [ ] **Verify magic-link email delivery** — pending the AWS SES IAM fix:
+      `revealyst-ses-sender` needs `ses:SendEmail` on the `revealyst.com`
+      identity (403 today; the API returns uniform 200, so delivery must be
+      confirmed in the SES console after the policy is attached)
 
 ### Post-v0.1 hardening backlog (tracked in runbook)
 
