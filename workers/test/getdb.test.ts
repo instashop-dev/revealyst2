@@ -56,4 +56,18 @@ describe("getDb pool lifecycle", () => {
     expect(db).toBe(fakeDb);
     expect(postgresMock.mock.calls.length).toBe(callsBefore);
   });
+
+  it("configures self-healing timeouts so hung queries cannot hold locks forever", async () => {
+    const callsBefore = postgresMock.mock.calls.length;
+    await getDb({ DATABASE_URL: "postgres://timeouts:5432/x" });
+    const options = postgresMock.mock.calls[callsBefore]?.[1] as Record<string, unknown> & {
+      parameters?: Record<string, string>;
+    };
+    expect(options.connect_timeout).toBe(10);
+    expect(options.parameters).toMatchObject({
+      statement_timeout: "10000",
+      lock_timeout: "8000",
+      idle_in_transaction_session_timeout: "10000",
+    });
+  });
 });
