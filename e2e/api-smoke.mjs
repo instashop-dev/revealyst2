@@ -39,12 +39,14 @@ function fail(name, detail) {
   console.error(`  ✗ ${name} — ${detail}`);
 }
 
+const FETCH_TIMEOUT_MS = 20_000;
+
 async function expectStatus(label, url, init, expected, { allowed = [] } = {}) {
   let res;
   try {
-    res = await fetch(url, init);
+    res = await fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   } catch (err) {
-    fail(label, `fetch failed: ${err.message}`);
+    fail(label, `fetch failed after ${FETCH_TIMEOUT_MS / 1000}s: ${err.message}`);
     return null;
   }
   if (res.status === expected || allowed.includes(res.status)) {
@@ -117,7 +119,7 @@ if (magicRes) {
 
 // --- Web: dashboard shell + SPA fallback for /auth/verify -------------------
 for (const path of ["/", "/auth/verify?token=smoke", "/progress"]) {
-  const res = await fetch(`${WEB}${path}`);
+  const res = await fetch(`${WEB}${path}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (res.status === 200) {
     const html = await res.text();
     if (html.includes("Revealyst")) {

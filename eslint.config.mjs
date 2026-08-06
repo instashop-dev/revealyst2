@@ -27,6 +27,7 @@ export default tseslint.config(
         clearTimeout: "readonly",
         fetch: "readonly",
         Response: "readonly",
+        AbortSignal: "readonly",
       },
     },
   },
