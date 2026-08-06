@@ -213,6 +213,8 @@ export async function sendMagicLinkEmail(config: SesConfig, email: MagicLinkEmai
       Authorization: authorization,
     },
     body: payload,
+    // Fail fast instead of hanging the magic-link request on a dead endpoint.
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {

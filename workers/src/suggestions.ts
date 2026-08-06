@@ -96,6 +96,7 @@ async function embed(text: string, apiKey: string): Promise<number[]> {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ model: EMBEDDING_MODEL, input: text }),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`embedding failed: ${res.status}`);
   const data = (await res.json()) as { data: Array<{ embedding: number[] }> };
@@ -134,6 +135,7 @@ async function generateSuggestions(
         },
       ],
     }),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`suggestion generation failed: ${res.status}`);
   const data = (await res.json()) as {

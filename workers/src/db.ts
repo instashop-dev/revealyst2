@@ -11,12 +11,24 @@ export async function createPostgresDb(connectionString: string): Promise<SqlDb>
   // is already sslmode-tuned, so don't force ssl for it. Direct external
   // Postgres (DATABASE_URL fallback) requires TLS.
   const isHyperdrive = /\.hyperdrive\.local/i.test(connectionString);
+  // postgres.js sends `parameters` in the startup packet at runtime, but its
+  // types omit it — cast to add the connection GUCs.
   const sql = postgres(connectionString, {
     prepare: false,
     max: 5,
     idle_timeout: 20,
+    connect_timeout: 10,
+    // Self-healing GUCs: a hung query or an orphaned transaction (frozen
+    // isolate, killed request) aborts server-side instead of holding locks —
+    // this is what caused fresh-user INSERTs to hang forever on the live DB.
+    parameters: {
+      statement_timeout: "10000",
+      lock_timeout: "8000",
+      idle_in_transaction_session_timeout: "10000",
+      application_name: "revealyst-workers",
+    },
     ...(isHyperdrive ? {} : { ssl: "require" as const }),
-  });
+  } as Parameters<typeof postgres>[1] & { parameters: Record<string, string> });
   return {
     async query<T extends object>(text: string, params: unknown[] = []) {
       const rows = await sql.unsafe<T[]>(text, params as never[]);
