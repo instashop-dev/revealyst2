@@ -25,7 +25,10 @@ describe("getDb pool lifecycle", () => {
   it("prefers the Hyperdrive connection string", async () => {
     const hd = "postgres://hyperdrive.local:6543/db";
     const callsBefore = postgresMock.mock.calls.length;
-    await getDb({ DATABASE_URL: "postgres://fallback:5432/x", HYPERDRIVE: { connectionString: hd } });
+    await getDb({
+      DATABASE_URL: "postgres://fallback:5432/x",
+      HYPERDRIVE: { connectionString: hd },
+    });
     expect(postgresMock.mock.calls.length - callsBefore).toBe(1);
     expect(postgresMock.mock.calls[callsBefore]?.[0]).toBe(hd);
   });

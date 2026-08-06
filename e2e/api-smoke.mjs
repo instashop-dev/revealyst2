@@ -51,7 +51,10 @@ async function expectStatus(label, url, init, expected, { allowed = [] } = {}) {
     pass(label, `HTTP ${res.status}`);
   } else {
     const body = (await res.text().catch(() => "")).slice(0, 300);
-    fail(label, `expected HTTP ${expected}${allowed.length ? ` or ${allowed.join("/")}` : ""}, got ${res.status} — ${body}`);
+    fail(
+      label,
+      `expected HTTP ${expected}${allowed.length ? ` or ${allowed.join("/")}` : ""}, got ${res.status} — ${body}`,
+    );
   }
   return res;
 }
@@ -64,31 +67,49 @@ await expectStatus("GET /api/openapi.json", `${API}/api/openapi.json`, {}, 200);
 
 // --- API: auth shape (no credentials needed) --------------------------------
 await expectStatus("GET /api/auth/me (no token → 401)", `${API}/api/auth/me`, {}, 401);
-await expectStatus("POST /api/auth/magic (bad email → 400)", `${API}/api/auth/magic`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: "not-an-email" }),
-}, 400);
-await expectStatus("POST /api/auth/verify (garbage token → 401)", `${API}/api/auth/verify`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ token: "garbage-token" }),
-}, 401);
+await expectStatus(
+  "POST /api/auth/magic (bad email → 400)",
+  `${API}/api/auth/magic`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "not-an-email" }),
+  },
+  400,
+);
+await expectStatus(
+  "POST /api/auth/verify (garbage token → 401)",
+  `${API}/api/auth/verify`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "garbage-token" }),
+  },
+  401,
+);
 
 // --- API: magic link (SES email delivery) ------------------------------------
 // Uniform 200 by design (no delivery-state oracle); SES failures are tracked
 // server-side in logs/observability, not in the API response.
 const email = `smoke-${Date.now()}@example.com`;
-const magicRes = await expectStatus("POST /api/auth/magic (valid email)", `${API}/api/auth/magic`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email }),
-}, 200);
+const magicRes = await expectStatus(
+  "POST /api/auth/magic (valid email)",
+  `${API}/api/auth/magic`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  },
+  200,
+);
 
 if (magicRes) {
   const body = await magicRes.json().catch(() => ({}));
   if (body.dev_link) {
-    warn("magic link", "API returned dev_link in production — DEV_MODE looks enabled on the live worker");
+    warn(
+      "magic link",
+      "API returned dev_link in production — DEV_MODE looks enabled on the live worker",
+    );
   } else {
     pass("magic link accepted", `→ ${email} (SES delivery verified in SES console/observability)`);
   }
@@ -110,5 +131,7 @@ for (const path of ["/", "/auth/verify?token=smoke", "/progress"]) {
 }
 
 // --- Summary ---------------------------------------------------------------
-console.log(`\n${failures === 0 ? "PASS" : "FAIL"} — ${failures} failure(s), ${warnings} warning(s)\n`);
+console.log(
+  `\n${failures === 0 ? "PASS" : "FAIL"} — ${failures} failure(s), ${warnings} warning(s)\n`,
+);
 process.exit(failures === 0 ? 0 : 1);

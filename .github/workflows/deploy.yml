@@ -52,8 +52,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -110,8 +110,8 @@ jobs:
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       LIBRARY_ENC_KEY: ${{ secrets.LIBRARY_ENC_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -175,6 +175,9 @@ jobs:
           set -euo pipefail
           # Idempotent: create is a no-op when it already exists (code 2017).
           # The config id is pinned in workers/wrangler.toml, so nothing to capture.
+          # Cleanup: delete the stale never-used 'revealyst-neon' config from the
+          # early RDS experiments (tolerate "does not exist").
+          npx wrangler hyperdrive delete revealyst-neon 2>&1 | grep -ivE 'not found|does not exist|no hyperdrive' || true
           npx wrangler hyperdrive create revealyst-pooler             --connection-string="$DATABASE_URL" 2>&1 | grep -v 'already exists' || true
 
   # --- Cloudflare Pages dashboard ----------------------------------------
@@ -187,8 +190,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -235,8 +238,8 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm

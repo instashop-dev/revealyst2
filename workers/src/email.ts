@@ -28,7 +28,10 @@ const SES_HOST = (region: string) => `email.${region}.amazonaws.com`;
 
 const enc = new TextEncoder();
 
-async function hmac(key: ArrayBuffer | Uint8Array, data: string | Uint8Array): Promise<ArrayBuffer> {
+async function hmac(
+  key: ArrayBuffer | Uint8Array,
+  data: string | Uint8Array,
+): Promise<ArrayBuffer> {
   const keyBuf = key instanceof Uint8Array ? key : new Uint8Array(key);
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
@@ -104,23 +107,15 @@ export async function signRequest(params: {
     .join("");
   const signedHeaders = signedHeaderNames.join(";");
 
-  const canonicalRequest = [
-    method,
-    path,
-    query,
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join("\n");
+  const canonicalRequest = [method, path, query, canonicalHeaders, signedHeaders, payloadHash].join(
+    "\n",
+  );
   const canonicalRequestHash = await sha256Hex(canonicalRequest);
 
   const credentialScope = `${dateStamp}/${params.region}/${params.service}/aws4_request`;
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    amzDate,
-    credentialScope,
-    canonicalRequestHash,
-  ].join("\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, canonicalRequestHash].join(
+    "\n",
+  );
 
   const kDate = await hmac(enc.encode(`AWS4${params.secretAccessKey}`), dateStamp);
   const kRegion = await hmac(kDate, params.region);

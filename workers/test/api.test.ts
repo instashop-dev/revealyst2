@@ -271,7 +271,9 @@ describe("auth email delivery", () => {
       Content: { Simple: { Body: { Html: { Data: string } } } };
     };
     expect(sent.Destination.ToAddresses).toEqual(["emailuser@example.com"]);
-    expect(sent.Content.Simple.Body.Html.Data).toContain("http://localhost:8788/auth/verify?token=");
+    expect(sent.Content.Simple.Body.Html.Data).toContain(
+      "http://localhost:8788/auth/verify?token=",
+    );
   });
 
   it("returns 200 without leaking delivery state when SES is not configured", async () => {

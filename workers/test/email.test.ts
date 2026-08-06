@@ -16,8 +16,7 @@ const AWS_VECTOR = {
   region: "us-east-1",
   service: "service",
   date: new Date("2015-08-30T12:36:00Z"),
-  expectedSignature:
-    "5fa00fa31553b73ebf1942676e86291e8372ff2a2260956d9b8aae1d763fbf31",
+  expectedSignature: "5fa00fa31553b73ebf1942676e86291e8372ff2a2260956d9b8aae1d763fbf31",
 };
 
 /** Independent SigV4 reference implementation (node:crypto) per AWS docs. */
@@ -48,7 +47,9 @@ async function referenceSigV4(params: {
     "x-amz-date": amzDate,
     ...params.headers,
   };
-  const names = Object.keys(allHeaders).map((h) => h.toLowerCase()).sort();
+  const names = Object.keys(allHeaders)
+    .map((h) => h.toLowerCase())
+    .sort();
   const canonicalHeaders = names.map((h) => `${h}:${(allHeaders[h] ?? "").trim()}\n`).join("");
   const signedHeaders = names.join(";");
 
@@ -121,7 +122,9 @@ describe("sendMagicLinkEmail", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("sends a properly signed SESv2 request", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ MessageId: "m-1" }), { status: 200 }));
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ MessageId: "m-1" }), { status: 200 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await sendMagicLinkEmail(config, {
@@ -154,10 +157,9 @@ describe("sendMagicLinkEmail", () => {
       "fetch",
       vi.fn(
         async () =>
-          new Response(
-            JSON.stringify({ message: "FromEmailAddress identity not verified" }),
-            { status: 400 },
-          ),
+          new Response(JSON.stringify({ message: "FromEmailAddress identity not verified" }), {
+            status: 400,
+          }),
       ),
     );
     await expect(
