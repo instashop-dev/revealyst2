@@ -25,12 +25,17 @@ export async function createPostgresDb(connectionString: string): Promise<SqlDb>
   };
 }
 
-const memo = new WeakMap<object, Promise<SqlDb>>();
+const globalPool = new Map<string, Promise<SqlDb>>();
 
 /**
- * One pooled connection per Worker instance (isolate), reused across requests.
- * Prefers the Hyperdrive proxy (Cloudflare-internal, reliable) and falls back
- * to the direct DATABASE_URL (e.g. local dev / tests).
+ * One pooled connection per connection string per isolate, reused across
+ * requests. Prefers the Hyperdrive proxy (Cloudflare-internal, reliable) and
+ * falls back to the direct DATABASE_URL (e.g. local dev / tests).
+ *
+ * Cache is module-global keyed by connection string — NOT keyed on the
+ * bindings object, because Cloudflare creates a fresh env object per request;
+ * a WeakMap keyed on env would spawn a new pool (and up to `max` sockets)
+ * per request and exhaust the upstream connection limit.
  */
 export function getDb(bindings: {
   DATABASE_URL: string;
@@ -39,13 +44,13 @@ export function getDb(bindings: {
 }): Promise<SqlDb> {
   if (bindings._DB) return Promise.resolve(bindings._DB);
   const connectionString = bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
-  let cached = memo.get(bindings);
+  let cached = globalPool.get(connectionString);
   if (!cached) {
     cached = createPostgresDb(connectionString).catch((error) => {
-      memo.delete(bindings);
+      globalPool.delete(connectionString);
       throw error;
     });
-    memo.set(bindings, cached);
+    globalPool.set(connectionString, cached);
   }
   return cached;
 }

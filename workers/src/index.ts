@@ -6,11 +6,13 @@ import { eventsRoutes } from "./routes/events.js";
 import { libraryRoutes } from "./routes/library.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { feedbackRoutes } from "./routes/feedback.js";
+import { requestLogger } from "./logger.js";
 import type { AppEnv } from "./env.js";
 
 const app = new OpenAPIHono<AppEnv>();
 
 app.use("/api/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
+app.use("*", requestLogger);
 
 app.get("/api/health", (c) =>
   c.json({ status: "ok", service: "revealyst-workers", time: new Date().toISOString() }, 200),
@@ -40,7 +42,11 @@ app.get("/api/docs", (c) => {
 
 app.notFound((c) => c.json({ error: "not_found", message: "Route not found" }, 404));
 app.onError((error, c) => {
-  console.error("[api] unhandled error:", error);
+  const ray = c.req.header("cf-ray") ?? "-";
+  console.error(
+    `[api] unhandled error on ${c.req.method} ${new URL(c.req.url).pathname} ray=${ray}:`,
+    error,
+  );
   return c.json({ error: "internal_error", message: "Something went wrong" }, 500);
 });
 

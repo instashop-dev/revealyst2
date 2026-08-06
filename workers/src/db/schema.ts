@@ -58,3 +58,9 @@ export interface SuggestionFeedbackRow {
   was_accepted: boolean;
   created_at: string;
 }
+
+export interface MagicLinkTokenRow {
+  jti: string;
+  user_id: string;
+  expires_at: string;
+}

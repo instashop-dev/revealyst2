@@ -18,3 +18,10 @@ JWT_SECRET=
 
 # Base URL of the web app (for magic-link redirects)
 APP_URL=http://localhost:8788
+
+# AWS SES — transactional email for magic links (optional for local dev;
+# required in production). The access keys are Worker secrets.
+SES_REGION=us-east-1
+SES_FROM_EMAIL=Revealyst <noreply@e.revealyst.com>
+SES_ACCESS_KEY_ID=
+SES_SECRET_ACCESS_KEY=

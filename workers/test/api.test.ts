@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPgPoolDb, runMigrations } from "@revealyst/db";
 import { DataType, newDb } from "pg-mem";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WorkerEnv } from "../src/env.js";
 import app from "../src/index.js";
 import { createRepos } from "../src/db/index.js";
@@ -214,6 +214,155 @@ describe("auth", () => {
     const res = await app.request("/api/auth/me", authed(), env);
     expect(res.status).toBe(200);
     expect((await res.json()) as { email: string }).toMatchObject({ email: "jamie@example.com" });
+  });
+});
+
+describe("auth email delivery", () => {
+  const prodEnv = (extra: Partial<WorkerEnv> = {}): WorkerEnv => ({
+    ...env,
+    DEV_MODE: "false",
+    ...extra,
+  });
+  const magicRequest = (email: string, e: WorkerEnv = env) =>
+    app.request(
+      "/api/auth/magic",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      },
+      e,
+    );
+
+  // Restore the OpenAI fetch stub — magic-link tests swap global fetch for SES.
+  afterEach(() => {
+    vi.stubGlobal("fetch", openaiFetch);
+  });
+
+  it("sends the link via SES in production and does not expose it", async () => {
+    const sesFetch = vi.fn(
+      async () => new Response(JSON.stringify({ MessageId: "m-1" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", sesFetch);
+    const res = await app.request(
+      "/api/auth/magic",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "emailuser@example.com" }),
+      },
+      prodEnv({
+        SES_ACCESS_KEY_ID: "AKIDEXAMPLE",
+        SES_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+        SES_REGION: "us-east-1",
+        SES_FROM_EMAIL: "Revealyst <noreply@e.revealyst.com>",
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { message: string; dev_link?: string };
+    expect(body.message).toBe("link sent");
+    expect(body.dev_link).toBeUndefined();
+
+    expect(sesFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = sesFetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain("email.us-east-1.amazonaws.com/v2/email/outbound-emails");
+    const sent = JSON.parse(init.body as string) as {
+      Destination: { ToAddresses: string[] };
+      Content: { Simple: { Body: { Html: { Data: string } } } };
+    };
+    expect(sent.Destination.ToAddresses).toEqual(["emailuser@example.com"]);
+    expect(sent.Content.Simple.Body.Html.Data).toContain(
+      "http://localhost:8788/auth/verify?token=",
+    );
+  });
+
+  it("returns 200 without leaking delivery state when SES is not configured", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("unexpected", { status: 500 })),
+    );
+    const res = await magicRequest("noses@example.com", prodEnv());
+    expect(res.status).toBe(200);
+    // uniform body — no config-state or recency oracle
+    expect((await res.json()) as { message: string }).toEqual({ message: "link sent" });
+  });
+
+  it("suppresses repeat sends to the same recipient (cooldown)", async () => {
+    const sesFetch = vi.fn(
+      async () => new Response(JSON.stringify({ MessageId: "m-2" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", sesFetch);
+    const envWithSes = prodEnv({
+      SES_ACCESS_KEY_ID: "AKIDEXAMPLE",
+      SES_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+    });
+    const first = await magicRequest("cooldown@example.com", envWithSes);
+    const second = await magicRequest("cooldown@example.com", envWithSes);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    // only one SES send despite two requests
+    expect(sesFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("token type separation (security: magic vs session)", () => {
+  it("rejects a session token on the verify endpoint", async () => {
+    const res = await app.request(
+      "/api/auth/verify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: sessionToken }),
+      },
+      env,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a magic token as a Bearer session token", async () => {
+    const magic = await app.request(
+      "/api/auth/magic",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "magic-bearer@example.com" }),
+      },
+      env,
+    );
+    const magicToken = new URL(
+      ((await magic.json()) as { dev_link: string }).dev_link,
+    ).searchParams.get("token") as string;
+    const res = await app.request("/api/auth/me", authed(undefined, magicToken), env);
+    expect(res.status).toBe(401);
+  });
+
+  it("enforces single-use magic links: a second verify with the same token is rejected", async () => {
+    const magic = await app.request(
+      "/api/auth/magic",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "single-use@example.com" }),
+      },
+      env,
+    );
+    const magicToken = new URL(
+      ((await magic.json()) as { dev_link: string }).dev_link,
+    ).searchParams.get("token") as string;
+    const verify = (t: string) =>
+      app.request(
+        "/api/auth/verify",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: t }),
+        },
+        env,
+      );
+    const first = await verify(magicToken);
+    expect(first.status).toBe(200);
+    const second = await verify(magicToken); // replay of the consumed link
+    expect(second.status).toBe(401);
   });
 });
 

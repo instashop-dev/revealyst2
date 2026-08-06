@@ -5,10 +5,10 @@ import { getSuggestions } from "../suggestions.js";
 import type { AppEnv } from "../env.js";
 
 const suggestionRequest = z.object({
-  prompt_hash: z.string().optional(),
-  flags: z.array(z.string()).max(10).optional(),
-  score_breakdown: z.record(z.string(), z.number()).optional(),
-  user_id: z.string().optional(),
+  prompt_hash: z.string().max(128).optional(),
+  flags: z.array(z.string().min(1).max(100)).max(10).optional(),
+  score_breakdown: z.record(z.string().max(32), z.number()).optional(),
+  user_id: z.string().max(128).optional(),
 });
 const suggestionSchema = z.object({
   id: z.string(),

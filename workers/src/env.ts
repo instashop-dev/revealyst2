@@ -15,6 +15,14 @@ export interface WorkerEnv {
   DEV_MODE?: string;
   /** When truthy, in-memory rate limiting is disabled (tests). */
   RATE_LIMIT_DISABLED?: string;
+  /** AWS SES region for magic-link email (default "us-east-1"). */
+  SES_REGION?: string;
+  /** Verified SES sender, e.g. `Revealyst <noreply@e.revealyst.com>`. */
+  SES_FROM_EMAIL?: string;
+  /** AWS access key for SES (Worker secret). Absent ⇒ email is unavailable. */
+  SES_ACCESS_KEY_ID?: string;
+  /** AWS secret key for SES (Worker secret). */
+  SES_SECRET_ACCESS_KEY?: string;
   VECTORIZE?: VectorizeIndex;
   /** Hyperdrive proxy for the Supabase pooler; preferred over DATABASE_URL. */
   HYPERDRIVE?: Hyperdrive;

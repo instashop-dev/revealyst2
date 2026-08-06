@@ -2,6 +2,7 @@ import type { SqlDb } from "@revealyst/db";
 import { createEventsRepo } from "./events.js";
 import { createFeedbackRepo } from "./feedback.js";
 import { createLibraryRepo } from "./library.js";
+import { createMagicRepo } from "./magic.js";
 import { createTeamsRepo } from "./teams.js";
 import { createUsersRepo } from "./users.js";
 
@@ -13,6 +14,7 @@ export function createRepos(db: SqlDb) {
     events: createEventsRepo(db),
     library: createLibraryRepo(db),
     feedback: createFeedbackRepo(db),
+    magic: createMagicRepo(db),
   };
 }
 

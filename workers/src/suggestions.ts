@@ -68,14 +68,15 @@ export async function getSuggestions(flags: string[], env: WorkerEnv): Promise<S
 
 /** "Fix a prompt that is missing output format and has vague context." */
 export function describeDeficiency(flags: string[]): string {
-  const labels = flags.map((f) => flagInfo(f)?.description ?? f.replace(/_/g, " ")).filter(Boolean);
+  const labels = flags
+    .map((f) => flagInfo(f)?.description ?? f.replace(/_/g, " "))
+    .map((label) => label.replace(/\.+$/, "")) // strip trailing periods for clean joins
+    .filter(Boolean);
   if (labels.length === 0) return "Improve the prompt quality.";
+  if (labels.length === 1) return `Fix a prompt that ${labels[0]}.`;
   const head = labels.slice(0, -1).join(", ");
-  const tail = labels.length > 1 ? labels[labels.length - 1] : undefined;
-  return `Fix a prompt that ${tail ? `${head} and ${tail}` : head}`.replace(
-    /^Fix a prompt that /,
-    "Fix a prompt that ",
-  );
+  const tail = labels[labels.length - 1];
+  return `Fix a prompt that ${head} and ${tail}.`;
 }
 
 async function withRetry<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
