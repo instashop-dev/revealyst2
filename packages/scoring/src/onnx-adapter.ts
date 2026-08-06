@@ -30,7 +30,9 @@ type TransformersPipeline = (input: string) => Promise<unknown>;
  * local model fails to load, rule-based scoring takes over").
  */
 export class OnnxScoringAdapter implements ScoringAdapter {
-  readonly engineKind: "onnx" | "rules";
+  /** Effective engine kind — flips to "rules" once a model failure forces a
+   *  fallback, so consumers can show the spec §7 "model unavailable" warning. */
+  engineKind: "onnx" | "rules";
   private pipelinePromise: Promise<TransformersPipeline | null> | null = null;
   private readonly fallback = new RuleScoringEngine();
 
@@ -41,11 +43,15 @@ export class OnnxScoringAdapter implements ScoringAdapter {
   async score(prompt: string, options?: ScoringOptions): Promise<ScoreResult> {
     const pipeline = await this.loadPipeline();
     if (!pipeline) {
+      this.engineKind = "rules";
       return this.fallback.score(prompt, options);
     }
     try {
-      return await this.scoreWithModel(pipeline, prompt, options);
+      const result = await this.scoreWithModel(pipeline, prompt, options);
+      this.engineKind = "onnx";
+      return result;
     } catch (error) {
+      this.engineKind = "rules";
       const result = await this.fallback.score(prompt, options);
       return {
         ...result,
@@ -102,7 +108,12 @@ export class OnnxScoringAdapter implements ScoringAdapter {
     prompt: string,
     options?: ScoringOptions,
   ): Promise<ScoreResult> {
-    const raw = await pipeline(prompt);
+    // Spec §7: prompts >4000 estimated tokens are truncated to the first 1000
+    // characters before scoring — the model input too, not just the rules.
+    const { maxTokens = 4000, truncateTo = 1000 } = options ?? {};
+    const estimatedTokens = Math.ceil(prompt.length / 4);
+    const modelInput = estimatedTokens > maxTokens ? prompt.slice(0, truncateTo) : prompt;
+    const raw = await pipeline(modelInput);
     const values = extractValues(raw);
     if (!values || values.length < DIMENSIONS.length + 1) {
       throw new Error("unexpected model output shape");
@@ -136,9 +147,25 @@ function extractValues(raw: unknown): number[] | null {
     return scores.some(Number.isNaN) ? null : scores;
   }
   if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
     for (const key of ["output", "logits", "scores", "values"]) {
-      const v = (raw as Record<string, unknown>)[key];
-      if (Array.isArray(v) && v.every((n) => typeof n === "number")) return v as number[];
+      const v = obj[key];
+      if (Array.isArray(v)) {
+        // Nested array of numbers, or [{label, score}] (token-level outputs).
+        if (v.every((n) => typeof n === "number")) return v as number[];
+        const nested = extractValues(v);
+        if (nested) return nested;
+      }
+    }
+    // Single-label text-classification output: {label: "LABEL_0", score: 0.9}.
+    // A single scalar cannot fill the 6-value contract, but a single-value
+    // classifier is a legitimate (if coarse) model — map it to overall only
+    // and let the caller's shape check decide (dimensions fall back to rules).
+    if (typeof obj.label === "string" && typeof obj.score === "number") {
+      return [obj.score];
+    }
+    if (typeof obj.score === "number" && "label" in obj === false) {
+      return [obj.score];
     }
   }
   return null;

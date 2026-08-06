@@ -168,5 +168,8 @@ describe("factory", () => {
     // No model artifact exists and @xenova/transformers is optional → rule fallback
     const result = await e.score("Help me write something good.");
     expect(result.meta.engine).toBe("rules");
+    // engineKind reflects the effective engine after the fallback (spec §7:
+    // consumers use it to surface a "model unavailable" notice).
+    expect(e.engineKind).toBe("rules");
   });
 });
