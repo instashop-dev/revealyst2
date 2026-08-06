@@ -171,6 +171,21 @@ authRoutes.openapi(routes.verify, async (c) => {
     }
     const user = await repos.users.getById(payload.userId);
     if (!user) return c.json({ error: "invalid_token", message: "User not found" }, 401);
+
+    // Team invite (spec §5.8): the magic link carries a team_id claim —
+    // verifying it auto-joins the invitee as a member.
+    if (payload.teamId) {
+      const existing = await repos.teams.findMember(payload.teamId, user.id);
+      if (!existing) {
+        try {
+          await repos.teams.addMember(payload.teamId, user.id);
+        } catch (err) {
+          // PK race with a concurrent verify of the same invite — non-fatal.
+          console.error("[auth] auto-join team failed:", err);
+        }
+      }
+    }
+
     const sessionToken = await signSessionToken(user.id, user.email, c.env.JWT_SECRET);
     return c.json(
       { token: sessionToken, user: { id: user.id, email: user.email, plan: user.plan } },

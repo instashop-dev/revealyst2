@@ -30,4 +30,12 @@ export interface WorkerEnv {
   _DB?: SqlDb;
 }
 
-export type AppEnv = { Bindings: WorkerEnv; Variables: { userId: string } };
+export type AppEnv = {
+  Bindings: WorkerEnv;
+  Variables: {
+    /** Always set by requireAuth (session required). */
+    userId: string;
+    /** Set by optionalAuth — the authenticated user id, or null when anonymous. */
+    authUserId: string | null;
+  };
+};

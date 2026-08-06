@@ -65,6 +65,78 @@ export function createTeamsRepo(db: SqlDb) {
       const member = await this.findMember(teamId, userId);
       return member?.role === "manager";
     },
+
+    /** All teams the user belongs to, with their role in each (spec §5.5). */
+    async listForUser(userId: string): Promise<Array<{ team: TeamRow; member: TeamMemberRow }>> {
+      const { rows } = await db.query<{
+        team_id: string;
+        role: string;
+        anon_alias: string | null;
+        opt_in_identifiable: boolean;
+      }>(
+        "SELECT team_id, role, anon_alias, opt_in_identifiable FROM team_members WHERE user_id = $1 ORDER BY team_id",
+        [userId],
+      );
+      const out: Array<{ team: TeamRow; member: TeamMemberRow }> = [];
+      for (const m of rows) {
+        const team = await this.findById(m.team_id);
+        if (!team) continue;
+        out.push({
+          team,
+          member: { ...m, user_id: userId },
+        });
+      }
+      return out;
+    },
+
+    /** Members with their user emails (used only to derive display names in
+     *  identifiable mode — emails themselves are never returned to clients). */
+    async listMembersWithUsers(teamId: string): Promise<Array<TeamMemberRow & { email: string }>> {
+      const { rows } = await db.query<TeamMemberRow & { email: string }>(
+        `SELECT m.*, u.email FROM team_members m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.team_id = $1 ORDER BY u.email`,
+        [teamId],
+      );
+      return rows;
+    },
+
+    /** Set the member's own identifiable-mode opt-in (spec §5.5). */
+    async setOptIn(teamId: string, userId: string, enabled: boolean): Promise<void> {
+      await db.query(
+        "UPDATE team_members SET opt_in_identifiable = $3 WHERE team_id = $1 AND user_id = $2",
+        [teamId, userId, enabled],
+      );
+    },
+
+    /** True when every member has opted in to identifiable mode. */
+    async allOptedIn(teamId: string): Promise<boolean> {
+      const { rows } = await db.query<{ n: string }>(
+        "SELECT COUNT(*)::text AS n FROM team_members WHERE team_id = $1 AND opt_in_identifiable = false",
+        [teamId],
+      );
+      return Number(rows[0]?.n ?? 0) === 0;
+    },
+
+    /** Merge a partial settings patch into the team's JSONB settings. */
+    async updateSettings(teamId: string, patch: Record<string, unknown>): Promise<TeamRow> {
+      const team = await this.findById(teamId);
+      if (!team) throw new Error("team settings update: team not found");
+      const current =
+        team.settings && typeof team.settings === "object"
+          ? (team.settings as Record<string, unknown>)
+          : {};
+      const merged = { ...current, ...patch };
+      // Assignment cast (text → jsonb) is implicit on UPDATE; the `||`
+      // operator is avoided for pg-mem compatibility.
+      const { rows } = await db.query<TeamRow>(
+        "UPDATE teams SET settings = $2 WHERE id = $1 RETURNING *",
+        [teamId, JSON.stringify(merged)],
+      );
+      const row = rows[0];
+      if (!row) throw new Error("team settings update returned no row");
+      return row;
+    },
   };
 }
 

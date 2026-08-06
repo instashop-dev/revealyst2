@@ -35,7 +35,11 @@ describe("migrations (pg-mem)", () => {
     await client.connect();
 
     const applied = await runMigrations(client);
-    expect(applied).toEqual(["001_init.sql", "002_magic_links.sql"]);
+    expect(applied).toEqual([
+      "001_init.sql",
+      "002_magic_links.sql",
+      "003_teams_personal_library.sql",
+    ]);
 
     const { rows } = await client.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'",
@@ -53,7 +57,11 @@ describe("migrations (pg-mem)", () => {
     const pool = new pg.Pool();
     const first = await runMigrations(pool);
     const second = await runMigrations(pool);
-    expect(first).toEqual(["001_init.sql", "002_magic_links.sql"]);
+    expect(first).toEqual([
+      "001_init.sql",
+      "002_magic_links.sql",
+      "003_teams_personal_library.sql",
+    ]);
     expect(second).toEqual([]);
   });
 

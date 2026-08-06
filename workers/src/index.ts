@@ -6,13 +6,16 @@ import { eventsRoutes } from "./routes/events.js";
 import { libraryRoutes } from "./routes/library.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { feedbackRoutes } from "./routes/feedback.js";
+import { teamRoutes } from "./routes/teams.js";
+import { historyRoutes } from "./routes/history.js";
+import { statsRoutes } from "./routes/stats.js";
 import { requestLogger } from "./logger.js";
 import { closeRequestDb, getDb } from "./db.js";
 import type { AppEnv } from "./env.js";
 
 const app = new OpenAPIHono<AppEnv>();
 
-app.use("/api/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
+app.use("/api/*", cors({ origin: "*", allowMethods: ["GET", "POST", "PATCH", "OPTIONS"] }));
 app.use("*", requestLogger);
 // Per-request DB lifecycle: the request's connection (created lazily by the
 // route's getDb call) is closed after the response. Required — Cloudflare
@@ -60,6 +63,9 @@ app.route("/", eventsRoutes);
 app.route("/", libraryRoutes);
 app.route("/", dashboardRoutes);
 app.route("/", feedbackRoutes);
+app.route("/", teamRoutes);
+app.route("/", historyRoutes);
+app.route("/", statsRoutes);
 
 // OpenAPI document (spec §6.4 contract) + minimal HTML docs page.
 app.doc("/api/openapi.json", {
