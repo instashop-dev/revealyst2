@@ -7,6 +7,7 @@ import { libraryRoutes } from "./routes/library.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { feedbackRoutes } from "./routes/feedback.js";
 import { requestLogger } from "./logger.js";
+import { getDb } from "./db.js";
 import type { AppEnv } from "./env.js";
 
 const app = new OpenAPIHono<AppEnv>();
@@ -14,9 +15,32 @@ const app = new OpenAPIHono<AppEnv>();
 app.use("/api/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
 app.use("*", requestLogger);
 
-app.get("/api/health", (c) =>
-  c.json({ status: "ok", service: "revealyst-workers", time: new Date().toISOString() }, 200),
-);
+app.get("/api/health", async (c) => {
+  const body: Record<string, unknown> = {
+    status: "ok",
+    service: "revealyst-workers",
+    time: new Date().toISOString(),
+  };
+  // Deep check: /api/health?db=1 runs a DB round-trip (SELECT 1) so ops can
+  // verify the Hyperdrive→Postgres path from anywhere.
+  if (c.req.query("db") === "1") {
+    try {
+      const db = await getDb(c.env);
+      await Promise.race([
+        db.query("SELECT 1"),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("db round-trip timed out (10s)")), 10_000),
+        ),
+      ]);
+      body.db = "ok";
+    } catch (err) {
+      body.db = `error: ${(err as Error).message}`;
+      body.status = "degraded";
+      console.error("[api] deep health db check failed:", err);
+    }
+  }
+  return c.json(body, 200);
+});
 
 app.route("/", authRoutes);
 app.route("/", suggestionRoutes);
