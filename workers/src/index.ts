@@ -7,13 +7,23 @@ import { libraryRoutes } from "./routes/library.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { feedbackRoutes } from "./routes/feedback.js";
 import { requestLogger } from "./logger.js";
-import { getDb } from "./db.js";
+import { closeRequestDb, getDb } from "./db.js";
 import type { AppEnv } from "./env.js";
 
 const app = new OpenAPIHono<AppEnv>();
 
 app.use("/api/*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
 app.use("*", requestLogger);
+// Per-request DB lifecycle: the request's connection (created lazily by the
+// route's getDb call) is closed after the response. Required — Cloudflare
+// forbids socket I/O shared across requests.
+app.use("/api/*", async (c, next) => {
+  try {
+    await next();
+  } finally {
+    await closeRequestDb(c.env);
+  }
+});
 
 app.get("/api/health", async (c) => {
   const body: Record<string, unknown> = {
