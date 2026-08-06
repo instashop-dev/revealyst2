@@ -31,13 +31,17 @@ function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
  * is heavy and only needed on DB routes); `prepare: false` keeps the socket
  * layer compatible with Cloudflare Workers (nodejs_compat).
  *
- * Every query is race-guarded by QUERY_TIMEOUT_MS. Cloudflare freezes idle
- * isolates with the pool sockets still open; Hyperdrive (or the origin) may
- * close those connections meanwhile, leaving *half-open* sockets that never
- * error — without this guard, a query on such a socket hangs forever and
- * exhausts the pool's `max` slots (observed live: requests hanging 5+ min,
- * then failing with no logs). On timeout the pool is torn down so the next
- * getDb() creates fresh connections.
+ * Connection strategy (learned the hard way on the live worker):
+ * - `idle_timeout: 0` → **per-request connections**. Hyperdrive closes idle
+ *   sockets while an isolate is frozen; postgres.js then writes to a
+ *   half-open socket and hangs (observed: intermittent 10s+ stalls, 5+ min
+ *   hangs before the timeout guard). Fresh connections per query eliminate
+ *   that class entirely (~1-2s connect cost per request, fine for this API).
+ * - Every query is race-guarded by QUERY_TIMEOUT_MS; on timeout the pool is
+ *   torn down so the next getDb() creates fresh connections.
+ * - Startup GUCs (statement/lock/idle-in-transaction timeouts) abort hung
+ *   queries server-side on the direct-DATABASE_URL path; Hyperdrive may not
+ *   forward them, which is why the client-side timeout is the primary guard.
  */
 export async function createPostgresDb(connectionString: string, poolKey: string): Promise<SqlDb> {
   const { default: postgres } = await import("postgres");
@@ -52,8 +56,7 @@ export async function createPostgresDb(connectionString: string, poolKey: string
   const sql = postgres(connectionString, {
     prepare: false,
     max: 5,
-    idle_timeout: 20,
-    max_lifetime: 60,
+    idle_timeout: 0,
     connect_timeout: 10,
     parameters: {
       statement_timeout: "10000",
