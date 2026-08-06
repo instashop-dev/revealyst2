@@ -174,11 +174,12 @@ jobs:
         run: |
           set -euo pipefail
           # Idempotent: create is a no-op when it already exists (code 2017).
-          # The config id is pinned in workers/wrangler.toml, so nothing to capture.
-          # Cleanup: delete the stale never-used 'revealyst-neon' config from the
-          # early RDS experiments (tolerate "does not exist").
+          # The config id is pinned in workers/wrangler.toml.
+          # Cleanup: delete stale never-used configs from the early RDS/Neon
+          # experiments (tolerate "does not exist").
           npx wrangler hyperdrive delete revealyst-neon 2>&1 | grep -ivE 'not found|does not exist|no hyperdrive' || true
-          npx wrangler hyperdrive create revealyst-pooler             --connection-string="$DATABASE_URL" 2>&1 | grep -v 'already exists' || true
+          npx wrangler hyperdrive delete revealyst-pooler 2>&1 | grep -ivE 'not found|does not exist|no hyperdrive' || true
+          npx wrangler hyperdrive create revealyst-pooler-2 --connection-string="$DATABASE_URL" 2>&1 | grep -v 'already exists' || true
 
   # --- Cloudflare Pages dashboard ----------------------------------------
   pages:

@@ -89,22 +89,34 @@ GitHub secrets include `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
    anti-oracle) — verify delivery in the SES console.
 5. **GitHub runners lack IPv6 egress** — migration/deploy steps force IPv4
    resolution for the DB host; do not "fix" by switching back to IPv6-first.
-6. **Hyperdrive**: `revealyst-pooler` is the live config (id pinned in
-   `wrangler.toml`). The stale `revealyst-neon` config is deleted by the
-   deploy pipeline (`rds` job) if present.
-7. **Static suggestion fallback** — if OpenAI or Vectorize is down, the API
+6. **Hyperdrive**: the live config is `revealyst-pooler-2` (id pinned in
+   `wrangler.toml`; the stale `revealyst-neon` and `revealyst-pooler` configs
+   are deleted by the deploy pipeline). **Refresh note**: on 2026-08-06 the
+   `revealyst-pooler` config's origin connections went stale (intermittent
+   10s+ hangs on every query, pooler healthy when hit directly) — a fresh
+   config + per-request connections resolved it. If auth hangs recur,
+   `npx wrangler hyperdrive update <id> --connection-string="$DATABASE_URL"`
+   or recreate the config.
+7. **DB connection model**: per-request connections (Cloudflare forbids
+   socket I/O shared across requests — a pooled driver intermittently errors
+   "Cannot perform I/O on behalf of a different request"). Each request opens
+   one connection, closed by middleware after the response. Every query has a
+   15s client-side timeout with ONE retry on a fresh connection — covers
+   Supabase free-tier database pause/wake (10-30s) and stale sockets. On
+   timeout the pool is recycled.
+8. **Static suggestion fallback** — if OpenAI or Vectorize is down, the API
    degrades to deterministic static patterns (`source: "static"`), never 5xx.
 
 ## Troubleshooting
 
-| Symptom                                           | Likely cause / action                                                                                                                                                                                                                                                                                                                                            |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/auth/magic` hangs or 500s on new users | (fixed) DB pool exhaustion + orphaned transactions — the worker pools per connection string with `statement_timeout`/`lock_timeout`/`idle_in_transaction_session_timeout` so hung queries abort and release locks. If it recurs, clear stuck backends in Supabase: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle in transaction'`. |
-| Magic link email never arrives                    | SES sandbox recipient verification; identity `revealyst.com` / subdomain `e.revealyst.com` DNS (MX/TXT); check SES console + `[auth] magic link email send failed:` log.                                                                                                                                                                                         |
-| Link rejected at verify (`401`)                   | Token consumed (single-use — request a new link), expired (>15 min), or jti insert failed (DB).                                                                                                                                                                                                                                                                  |
-| Suggestions return `source: "static"`             | Upstream (OpenAI/Vectorize) unavailable or rate limited — transient by design.                                                                                                                                                                                                                                                                                   |
-| Deploy `rds` job fails on migration               | IPv4 resolution of DB host (see quirk 5); TLS/CA of pooler.                                                                                                                                                                                                                                                                                                      |
-| 429s on magic                                     | Per-IP limiter (5/min) or Cloudflare WAF rule — slow down / wait a minute.                                                                                                                                                                                                                                                                                       |
+| Symptom                                           | Likely cause / action                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/auth/magic` hangs or 500s on new users | (fixed) — see the 2026-08-06 incident: stale Hyperdrive origin pool + cross-request socket sharing + Supabase free-tier pause/wake. Current design: per-request connections, 15s query timeout + one retry, fresh `revealyst-pooler-2` config. If it recurs: check `[db] QUERY TIMED OUT` logs, `curl /api/health?db=1`, verify the pooler is awake (`SELECT 1` from a client), and refresh the Hyperdrive config. |
+| Magic link email never arrives                    | SES sandbox recipient verification; identity `revealyst.com` / subdomain `e.revealyst.com` DNS (MX/TXT); check SES console + `[auth] magic link email send failed:` log.                                                                                                                                                                                                                                           |
+| Link rejected at verify (`401`)                   | Token consumed (single-use — request a new link), expired (>15 min), or jti insert failed (DB).                                                                                                                                                                                                                                                                                                                    |
+| Suggestions return `source: "static"`             | Upstream (OpenAI/Vectorize) unavailable or rate limited — transient by design.                                                                                                                                                                                                                                                                                                                                     |
+| Deploy `rds` job fails on migration               | IPv4 resolution of DB host (see quirk 5); TLS/CA of pooler.                                                                                                                                                                                                                                                                                                                                                        |
+| 429s on magic                                     | Per-IP limiter (5/min) or Cloudflare WAF rule — slow down / wait a minute.                                                                                                                                                                                                                                                                                                                                         |
 
 ## Operational procedures
 

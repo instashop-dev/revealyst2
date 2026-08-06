@@ -39,7 +39,7 @@ function fail(name, detail) {
   console.error(`  ✗ ${name} — ${detail}`);
 }
 
-const FETCH_TIMEOUT_MS = 20_000;
+const FETCH_TIMEOUT_MS = 45_000;
 
 async function expectStatus(label, url, init, expected, { allowed = [] } = {}) {
   let res;
