@@ -69,10 +69,19 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           LIBRARY_ENC_KEY: ${{ secrets.LIBRARY_ENC_KEY }}
+          SES_ACCESS_KEY_ID: ${{ secrets.AWS_SES_ACCESS_KEY_ID }}
+          SES_SECRET_ACCESS_KEY: ${{ secrets.AWS_SES_SECRET_ACCESS_KEY }}
         run: |
           echo "$OPENAI_API_KEY" | npx wrangler secret put OPENAI_API_KEY
           echo "$JWT_SECRET" | npx wrangler secret put JWT_SECRET
           echo "$LIBRARY_ENC_KEY" | npx wrangler secret put LIBRARY_ENC_KEY
+          if [ -n "$SES_ACCESS_KEY_ID" ]; then
+            echo "$SES_ACCESS_KEY_ID" | npx wrangler secret put SES_ACCESS_KEY_ID
+            echo "$SES_SECRET_ACCESS_KEY" | npx wrangler secret put SES_SECRET_ACCESS_KEY
+            echo "SES secrets set (magic-link email live)"
+          else
+            echo "SES secrets absent — magic-link email will 500 until configured"
+          fi
       - name: Print live URL
         if: ${{ hashFiles('workers/wrangler.toml') != '' }}
         working-directory: workers
@@ -195,6 +204,25 @@ jobs:
         if: ${{ hashFiles('web/index.html') != '' }}
         working-directory: web
         run: npx wrangler pages deploy dist --project-name revealyst-web
+
+  # --- Live integration smoke (after Workers + Pages are live) --------------
+  # Exercises the deployed API + dashboard exactly like a user: health,
+  # OpenAPI, auth shape, magic link, and SPA fallback.
+  smoke:
+    needs: [gate, workers, pages]
+    if: ${{ needs.gate.outputs.cf == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      E2E_API_URL: https://revealyst-workers.thapi.workers.dev
+      E2E_WEB_URL: https://revealyst-web.pages.dev
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Run live API + web smoke
+        run: node e2e/api-smoke.mjs
 
   # --- Vectorize namespace + seed ----------------------------------------
   vectorize:

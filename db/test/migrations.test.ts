@@ -11,6 +11,7 @@ const EXPECTED_TABLES = [
   "prompt_events",
   "library_prompts",
   "suggestions_feedback",
+  "magic_link_tokens",
   "schema_migrations",
 ];
 
@@ -27,14 +28,14 @@ function makeDb(): ReturnType<typeof newDb> {
 }
 
 describe("migrations (pg-mem)", () => {
-  it("applies 001_init.sql and creates all six tables + schema_migrations", async () => {
+  it("applies all migrations and creates the expected tables", async () => {
     const mem = makeDb();
     const pg = mem.adapters.createPg();
     const client = new pg.Client();
     await client.connect();
 
     const applied = await runMigrations(client);
-    expect(applied).toEqual(["001_init.sql"]);
+    expect(applied).toEqual(["001_init.sql", "002_magic_links.sql"]);
 
     const { rows } = await client.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'",
@@ -52,7 +53,7 @@ describe("migrations (pg-mem)", () => {
     const pool = new pg.Pool();
     const first = await runMigrations(pool);
     const second = await runMigrations(pool);
-    expect(first).toEqual(["001_init.sql"]);
+    expect(first).toEqual(["001_init.sql", "002_magic_links.sql"]);
     expect(second).toEqual([]);
   });
 
@@ -115,6 +116,7 @@ describe("migrations (pg-mem)", () => {
         "parent_id",
       ],
       suggestions_feedback: ["user_id", "suggestion_id", "was_accepted"],
+      magic_link_tokens: ["jti", "user_id", "expires_at"],
     };
     for (const [table, expected] of Object.entries(specColumns)) {
       for (const col of expected) {

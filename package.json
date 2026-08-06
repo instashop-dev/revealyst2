@@ -19,6 +19,7 @@
     "format:check": "prettier --check .",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
+    "e2e:api": "node e2e/api-smoke.mjs",
     "clean": "npm run clean --workspaces --if-present && rm -rf node_modules"
   },
   "engines": {

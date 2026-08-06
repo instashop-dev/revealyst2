@@ -20,10 +20,17 @@ enabled = true
 
 # Non-secret vars — real values come from the deployment workflow / .dev.vars.
 [vars]
-APP_URL = "https://revealyst.pages.dev"
+APP_URL = "https://revealyst-web.pages.dev"
 VECTORIZE_NAMESPACE = "prompt-patterns"
 DEV_MODE = "false"
 RATE_LIMIT_DISABLED = "false"
 
 # Secrets (set via `wrangler secret put` or the deploy workflow):
-#   OPENAI_API_KEY, JWT_SECRET, DATABASE_URL, LIBRARY_ENC_KEY
+#   OPENAI_API_KEY, JWT_SECRET, DATABASE_URL, LIBRARY_ENC_KEY,
+#   SES_ACCESS_KEY_ID, SES_SECRET_ACCESS_KEY
+
+# AWS SES — transactional email for magic links (identity: revealyst.com,
+# sending via the e.revealyst.com subdomain). SES_REGION / SES_FROM_EMAIL are
+# non-secret vars; the access keys are Worker secrets.
+SES_REGION = "us-east-1"
+SES_FROM_EMAIL = "Revealyst <noreply@e.revealyst.com>"

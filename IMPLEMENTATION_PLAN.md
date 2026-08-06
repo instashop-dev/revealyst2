@@ -89,7 +89,7 @@ dashboard. Full spec:
 
 ### Phase 5 — close out
 
-- [ ] Live smoke test of `https://revealyst.pages.dev` (login → magic link → dashboard)
+- [ ] Live smoke test of `https://revealyst-web.pages.dev` (login → magic link → dashboard)
 - [ ] Confirm Pages auth round-trip against the live Worker/Hyperdrive DB
 - [ ] Mark phase 5 complete in the session plan
 

@@ -15,6 +15,8 @@ it is stored. **Never commit real secrets.** Local dev secrets go in
 | `AWS_SECRET_ACCESS_KEY` | Terraform provisioning of RDS          | Same IAM user                                                                                                                                                                   |
 | `AWS_REGION`            | RDS region, e.g. `us-east-1`           | —                                                                                                                                                                               |
 | `DATABASE_URL`          | Worker → RDS connection                | Produced by Terraform after first apply; set afterwards                                                                                                                         |
+| `AWS_SES_ACCESS_KEY_ID` | AWS SES sending (magic-link email)     | AWS IAM → SES-sending user (policy: `ses:SendEmail` on `revealyst.com`)                                                                                                        |
+| `AWS_SES_SECRET_ACCESS_KEY` | AWS SES sending (magic-link email) | Same IAM user                                                                                                                                                                  |
 
 ### Setting secrets
 
@@ -26,6 +28,8 @@ gh secret set AWS_ACCESS_KEY_ID
 gh secret set AWS_SECRET_ACCESS_KEY
 gh secret set AWS_REGION
 gh secret set DATABASE_URL
+gh secret set AWS_SES_ACCESS_KEY_ID
+gh secret set AWS_SES_SECRET_ACCESS_KEY
 ```
 
 ## Worker secrets (Cloudflare)
@@ -36,7 +40,14 @@ Runtime secrets for the deployed Worker, set with Wrangler after deploy:
 npx wrangler secret put OPENAI_API_KEY   # --from-env or interactive
 npx wrangler secret put JWT_SECRET
 npx wrangler secret put DATABASE_URL
+npx wrangler secret put SES_ACCESS_KEY_ID
+npx wrangler secret put SES_SECRET_ACCESS_KEY
 ```
+
+Non-secret SES config lives in `workers/wrangler.toml` `[vars]`:
+`SES_REGION` (default `us-east-1`) and `SES_FROM_EMAIL`
+(`Revealyst <noreply@e.revealyst.com>`). The SES identity is `revealyst.com`,
+with DNS (MX/TXT) set up for the sending subdomain `e.revealyst.com`.
 
 ## Local development
 

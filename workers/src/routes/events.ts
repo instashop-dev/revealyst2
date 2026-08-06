@@ -6,10 +6,10 @@ import { createRateLimiter, rateLimit } from "../rate-limit.js";
 import type { AppEnv } from "../env.js";
 
 const eventRequest = z.object({
-  prompt_hash: z.string().min(8),
+  prompt_hash: z.string().min(8).max(128),
   score: z.number().int().min(0).max(100),
-  flags: z.array(z.string()).max(10).optional(),
-  breakdown: z.record(z.string(), z.number()).optional(),
+  flags: z.array(z.string().min(1).max(100)).max(10).optional(),
+  breakdown: z.record(z.string().max(32), z.number()).optional(),
   llm_platform: z.string().max(64).optional(),
   timestamp: z.string().datetime().optional(),
   team_id: z.string().uuid().optional(),
