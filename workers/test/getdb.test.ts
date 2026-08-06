@@ -3,7 +3,7 @@ import { getDb } from "../src/db.js";
 
 // createPostgresDb lazily imports "postgres"; stub it so no real socket opens.
 vi.mock("postgres", () => ({
-  default: vi.fn(() => ({ unsafe: vi.fn() })),
+  default: vi.fn(() => ({ unsafe: vi.fn(), end: vi.fn().mockResolvedValue(undefined) })),
 }));
 
 const { default: postgres } = await import("postgres");
@@ -69,5 +69,30 @@ describe("getDb pool lifecycle", () => {
       lock_timeout: "8000",
       idle_in_transaction_session_timeout: "10000",
     });
+  });
+
+  it("times out a hung query and recycles the pool", async () => {
+    vi.useFakeTimers();
+    try {
+      const db = await getDb({ DATABASE_URL: "postgres://hang:5432/x" });
+      // make this pool's queries hang forever
+      const sql = postgresMock.mock.results.at(-1)?.value as {
+        unsafe: ReturnType<typeof vi.fn>;
+        end: ReturnType<typeof vi.fn>;
+      };
+      sql.unsafe.mockImplementation(() => new Promise(() => {})); // never resolves
+
+      const query = db.query("SELECT 1");
+      const assertion = expect(query).rejects.toThrow(/timed out/);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await assertion;
+
+      // the dead pool is dropped so the next request creates fresh connections
+      expect(sql.end).toHaveBeenCalled();
+      const db2 = await getDb({ DATABASE_URL: "postgres://hang:5432/x" });
+      expect(db2).not.toBe(db);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
