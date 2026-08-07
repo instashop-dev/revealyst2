@@ -1,7 +1,7 @@
 # Revealyst — Implementation Plan & Status
 
 > Living document. Updated 2026-08-07. Reflects the state of `main` after
-> Phase 6 close-out (PRs #6–#16): everything in this plan is done and
+> Phase 6 close-out (PRs #6–#19): everything in this plan is done and
 > deployed, with live smoke + full-stack journey e2e green.
 
 ## Project goal
@@ -126,6 +126,13 @@ security model, key decisions).
   workers 45, scoring 25, db 5, web 9, extension ~25, ml 1**), `build`
 - Live: `/api/health` 200; dashboard root 200; `/auth/verify` SPA fallback 200;
   `POST /api/auth/magic` 200 (~1s) for existing users
+- **Local dev fixed (PR #19)** — the full-stack journey failed on a fresh
+  machine because miniflare's Hyperdrive emulation pipes _plaintext_ to RDS
+  when the local connection string lacks `?sslmode=require` (RDS rejects it),
+  and wrangler 4.x reads Cloudflare auth + the Hyperdrive local string from the
+  **process env**, not `.dev.vars`. `npm run dev:local -w workers`
+  (`workers/scripts/dev-local.mjs`) now exports those vars and runs the pinned
+  wrangler (devDependency `^4.107.0`) — journey runs green locally and in CI.
 
 ## What remains
 
