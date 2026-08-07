@@ -1,8 +1,8 @@
 # Revealyst — Implementation Plan & Status
 
-> Living document. Updated 2026-08-06. Reflects the state of branch
-> `phase5-closeout-ses-e2e` (PR pending) on top of `main`
-> (`b47b4e6` + Hyperdrive fix `db86f33`, web dashboard PR #4 `ef141b2`).
+> Living document. Updated 2026-08-07. Reflects the state of `main` after
+> Phase 6 close-out (PRs #6–#16): everything in this plan is done and
+> deployed, with live smoke + full-stack journey e2e green.
 
 ## Project goal
 

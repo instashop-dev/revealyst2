@@ -59,7 +59,7 @@ Tracked in detail in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md):
 
 1. Foundation & CI — ✅ done
 2. Scoring engine — ✅ done
-3. Backend & data — ✅ done (live Supabase + Cloudflare Hyperdrive, round-trip verified)
+3. Backend & data — ✅ done (AWS RDS via Cloudflare Hyperdrive, round-trip verified)
 4. Chrome extension — ✅ done
-5. Web dashboard — 🟡 built, merged & deployed; final live verification pending
-6. Production readiness — ⬜ pending
+5. Web dashboard — ✅ done (all pages built, deployed & live-verified)
+6. Production readiness — ✅ done (live smoke + full-stack journey e2e, security review, v0.1.0)
