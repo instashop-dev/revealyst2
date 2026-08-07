@@ -17,27 +17,27 @@ dashboard. Full spec:
 See `docs/architecture.md` for the full model (components, data flows,
 security model, key decisions).
 
-| Layer            | Where              | Stack                                                      |
-| ---------------- | ------------------ | ---------------------------------------------------------- |
-| Scoring engine   | `packages/scoring` | Pure TS, rule-based + ONNX adapter w/ fallback             |
-| Chrome extension | `extension/`       | MV3, Vite/CRXJS, React sidebar (300px, shadow DOM)         |
-| Web dashboard    | `web/`             | React + Vite, Cloudflare Pages (`revealyst-web.pages.dev`) |
-| API              | `workers/`         | Hono (zod-openapi), Cloudflare Workers                     |
-| Database         | `db/`              | Supabase Postgres (pooler) via Cloudflare **Hyperdrive**   |
-| Search           | `vectorize/`       | Cloudflare Vectorize (~5,000 seeded patterns)              |
-| ML assets        | `ml/`              | ONNX export notes, model registry                          |
-| Docs             | `docs/`            | architecture.md, runbook.md, ml-notes.md                   |
+| Layer            | Where              | Stack                                                              |
+| ---------------- | ------------------ | ------------------------------------------------------------------ |
+| Scoring engine   | `packages/scoring` | Pure TS, rule-based + ONNX adapter w/ fallback                     |
+| Chrome extension | `extension/`       | MV3, Vite/CRXJS, React sidebar (300px, shadow DOM)                 |
+| Web dashboard    | `web/`             | React + Vite, Cloudflare Pages (`revealyst-web.pages.dev`)         |
+| API              | `workers/`         | Hono (zod-openapi), Cloudflare Workers                             |
+| Database         | `db/`              | AWS RDS PostgreSQL via Cloudflare **Hyperdrive** (`revealyst-rds`) |
+| Search           | `vectorize/`       | Cloudflare Vectorize (~5,000 seeded patterns)                      |
+| ML assets        | `ml/`              | ONNX export notes, model registry                                  |
+| Docs             | `docs/`            | architecture.md, runbook.md, ml-notes.md                           |
 
 ## Phase status
 
-| Phase                   | Status   | Notes                                                                                                  |
-| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
-| 1. Foundation & CI      | ✅ Done  | Monorepo, configs, CI + deploy workflows, docs, secrets bootstrap                                      |
-| 2. Scoring engine       | ✅ Done  | 5-dimension scorer, flags, color bands, ONNX adapter, tests + <200ms bench                             |
-| 3. Backend & data       | ✅ Done  | Migrations, Hono API, Vectorize seed, live deploy, Hyperdrive DB round-trip verified                   |
-| 4. Chrome extension     | ✅ Done  | Sidebar UI, live scoring, suggestion apply, e2e, packaged `.zip`                                       |
-| 5. Web dashboard        | ✅ Done  | All pages built + merged + deployed; **SES magic-link email live**; auth round-trip verified           |
-| 6. Production readiness | 🟡 ~Done | E2E suite, security review, observability, docs, tech debt done; **v0.1.0 + final live smoke pending** |
+| Phase                   | Status  | Notes                                                                                                                             |
+| ----------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Foundation & CI      | ✅ Done | Monorepo, configs, CI + deploy workflows, docs, secrets bootstrap                                                                 |
+| 2. Scoring engine       | ✅ Done | 5-dimension scorer, flags, color bands, ONNX adapter, tests + <200ms bench                                                        |
+| 3. Backend & data       | ✅ Done | Migrations, Hono API, Vectorize seed, live deploy, Hyperdrive DB round-trip verified                                              |
+| 4. Chrome extension     | ✅ Done | Sidebar UI, live scoring, suggestion apply, e2e, packaged `.zip`                                                                  |
+| 5. Web dashboard        | ✅ Done | All pages built + merged + deployed; **SES magic-link email live**; auth round-trip verified                                      |
+| 6. Production readiness | ✅ Done | E2E smoke (live) + full-stack journey (real RDS/Vectorize/OpenAI), security review, observability, docs, tech debt, v0.1.0 tagged |
 
 ## What is done
 
@@ -45,7 +45,7 @@ security model, key decisions).
 
 - npm workspaces monorepo: `packages/scoring`, `extension/`, `web/`, `workers/`, `db/`, `vectorize/`, `ml/`
 - Shared TS / ESLint / Prettier configs; workspace scripts (`typecheck`, `lint`, `test`, `build`, `format`)
-- GitHub Actions: `ci.yml` (all gates) + `deploy.yml` (Workers, Pages, RDS, Vectorize, smoke) gated on secret presence
+- GitHub Actions: `ci.yml` (all gates) + `deploy.yml` (Workers, Pages, RDS, Vectorize, smoke, journey) gated on secret presence
 
 ### Phase 2 — Scoring engine
 
@@ -98,8 +98,15 @@ security model, key decisions).
 ### Phase 6 — Production readiness (~done)
 
 - **E2E integration suite** — `e2e/api-smoke.mjs` (health, OpenAPI, auth shape, magic link,
-  SPA fallback) runs as the `smoke` job after every deploy; `npm run e2e:api` locally.
+  suggestion engine, session-auth boundaries, SPA fallback) runs as the `smoke` job after every deploy.
   Its first live run caught the getDb pool-leak bug above.
+- **Full-stack journey e2e** — `e2e/journey.mjs` runs the complete authenticated journey
+  (magic-link auth → events → history/stats → feedback → suggestion → team lifecycle → shared library)
+  against a local `wrangler dev` worker wired to the **real** RDS/Vectorize/OpenAI (DEV_MODE magic
+  links), then removes its own test rows. Runs as the `journey` deploy job. First runs caught three
+  real Postgres-integration bugs that pg-mem masked: TEXT[] params ("malformed array literal"),
+  JSONB columns returned as strings (`fetch_types: false` — identifiable mode could never activate),
+  and jsonb writes via `JSON.stringify` storing jsonb _strings_.
 - **Edge-case audit vs spec §7** — fixed `describeDeficiency` single-flag bug (degenerate
   embedding query text); hardened `/api/suggestion` + `/api/event` input schemas
   (bounded flag strings, hash/key caps)
@@ -125,12 +132,11 @@ security model, key decisions).
 ### Phase 6 — close out (this PR)
 
 - [x] CI green on the PR; merged to `main`
-- [x] Deploy green end-to-end incl. the `smoke` job; post-deploy live smoke PASS
+- [x] Deploy green end-to-end incl. the `smoke` + `journey` jobs; post-deploy live smoke PASS
 - [x] `v0.1.0` tag + GitHub release; branch cleanup sweep (done — only `main` remains)
-- [ ] **Verify magic-link email delivery** — pending the AWS SES IAM fix:
-      `revealyst-ses-sender` needs `ses:SendEmail` on the `revealyst.com`
-      identity (403 today; the API returns uniform 200, so delivery must be
-      confirmed in the SES console after the policy is attached)
+- [x] **Magic-link email delivery verified** — SES IAM policy now allows `ses:SendEmail`;
+      a live SigV4 probe against `email.us-east-1.amazonaws.com` returned `200` + MessageId
+      (identity/subdomain `e.revealyst.com` configured, keys live on the Worker)
 
 ### Post-v0.1 hardening backlog (tracked in runbook)
 
@@ -146,6 +152,10 @@ security model, key decisions).
 ```bash
 npm ci && npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build
 node e2e/api-smoke.mjs                                          # live smoke vs deployed endpoints
+# full-stack journey (local worker + real RDS/Vectorize/OpenAI):
+#   export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$DATABASE_URL?sslmode=require"
+#   (cd workers && npx wrangler dev --port 8788 --ip 127.0.0.1)  # with DEV_MODE=true in .dev.vars
+#   DATABASE_URL=$DATABASE_URL node e2e/journey.mjs
 curl -s https://revealyst-workers.thapi.workers.dev/api/health  # {"status":"ok",...}
 curl -s -X POST https://revealyst-workers.thapi.workers.dev/api/auth/magic \
   -H 'Content-Type: application/json' -d '{"email":"you@example.com"}'  # → {"message":"link sent"} (uniform 200; delivery is confirmed in SES console)
@@ -155,6 +165,6 @@ curl -s -X POST https://revealyst-workers.thapi.workers.dev/api/auth/magic \
 
 Merges to `main` trigger `.github/workflows/deploy.yml`: `gate` → `vectorize` →
 `workers` (deploy + secrets incl. SES) → `rds` (migrations + Hyperdrive ensure +
-stale-config cleanup) → `pages` → `smoke`. Secrets are gated via the `gate` job;
-`DATABASE_URL` is user-provisioned (Supabase pooler) and proxied through
-Hyperdrive in the Worker. See `docs/runbook.md` for operations.
+stale-config cleanup) → `pages` → `smoke` → `journey`. Secrets are gated via the `gate` job;
+`DATABASE_URL` is user-provisioned (AWS RDS) and proxied through
+Hyperdrive (`revealyst-rds`) in the Worker. See `docs/runbook.md` for operations.
