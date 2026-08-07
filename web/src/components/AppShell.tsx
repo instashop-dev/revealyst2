@@ -1,24 +1,29 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/session.js";
+import { useTeams } from "../teams.js";
 
 const NAV = [
   { to: "/progress", label: "Progress" },
   { to: "/history", label: "History" },
   { to: "/achievements", label: "Achievements" },
   { to: "/library", label: "Library" },
-  { to: "/team", label: "Team" },
+  { to: "/team", label: "Team", managerOnly: true },
   { to: "/settings", label: "Settings" },
 ];
 
 export function AppShell() {
   const { user, logout } = useAuth();
+  const { teams } = useTeams();
+  const isManager = teams.some((t) => t.role === "manager");
+  const nav = NAV.filter((item) => !("managerOnly" in item) || isManager);
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <span className="text-lg font-bold text-emerald-700">Revealyst</span>
           <nav className="flex gap-1">
-            {NAV.map((item) => (
+            {nav.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

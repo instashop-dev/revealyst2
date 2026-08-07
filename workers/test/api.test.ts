@@ -370,7 +370,10 @@ describe("suggestion", () => {
   it("returns suggestions via vectorize+llm (stubbed)", async () => {
     const res = await app.request(
       "/api/suggestion",
-      authed({ flags: ["missing_role"], prompt_hash: "abc12345" }),
+      authed({
+        flags: ["missing_role"],
+        prompt_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      }),
       env,
     );
     expect(res.status).toBe(200);
@@ -419,7 +422,7 @@ describe("events + dashboard", () => {
     const eventRes = await app.request(
       "/api/event",
       authed({
-        prompt_hash: "sha256-event-1",
+        prompt_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         score: 45,
         flags: ["missing_role", "missing_output_format"],
         breakdown: {

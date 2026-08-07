@@ -23,11 +23,13 @@ export interface TeamMemberRow {
   user_id: string;
   role: string;
   anon_alias: string | null;
+  opt_in_identifiable: boolean;
 }
 
 export interface PromptEventRow {
   id: string;
   user_anon_id: string;
+  user_id: string | null;
   team_id: string | null;
   prompt_hash: string;
   score: number | null;
@@ -49,6 +51,9 @@ export interface LibraryPromptRow {
   usage_count: number;
   version: number;
   parent_id: string | null;
+  notes: string | null;
+  is_standard: boolean;
+  last_used_at: string | null;
   created_at: string;
 }
 

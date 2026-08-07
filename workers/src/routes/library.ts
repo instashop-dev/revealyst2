@@ -16,6 +16,9 @@ const libraryCard = z.object({
   score: z.number().nullable(),
   usage_count: z.number(),
   version: z.number(),
+  is_standard: z.boolean(),
+  notes: z.string().nullable(),
+  last_used_at: z.string().nullable(),
   created_at: z.string(),
   contributor: z.string(),
 });
@@ -30,6 +33,7 @@ const listRoute = createRoute({
       search: z.string().optional(),
       tag: z.string().optional(),
       min_score: z.coerce.number().optional(),
+      sort: z.enum(["most_used", "highest_score", "newest"]).optional(),
       page: z.coerce.number().int().positive().optional(),
     }),
   },
@@ -96,10 +100,81 @@ const getRoute = createRoute({
             id: z.string(),
             prompt_text: z.string(),
             title: z.string().nullable(),
+            version: z.number(),
           }),
         },
       },
       description: "Decrypted prompt body (copy/send-to-LLM)",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not a team member",
+    },
+    404: { content: { "application/json": { schema: errorResponse } }, description: "Not found" },
+  },
+});
+
+const patchRequest = z.object({
+  title: z.string().max(200).optional(),
+  tags: z.array(z.string().max(40)).max(10).optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  is_standard: z.boolean().optional(),
+  prompt_text: z.string().min(1).max(20_000).optional(),
+  score: z.number().int().min(0).max(100).optional(),
+});
+
+const patchRoute = createRoute({
+  method: "patch",
+  path: "/api/library/{id}",
+  middleware: [requireAuth],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { content: { "application/json": { schema: patchRequest } } },
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: libraryCard } },
+      description: "Prompt updated (edits create a new version)",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not a team member / manager action denied",
+    },
+    404: { content: { "application/json": { schema: errorResponse } }, description: "Not found" },
+  },
+});
+
+const versionsRoute = createRoute({
+  method: "get",
+  path: "/api/library/{id}/versions",
+  middleware: [requireAuth],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            versions: z.array(
+              z.object({
+                id: z.string(),
+                version: z.number(),
+                title: z.string().nullable(),
+                created_at: z.string(),
+                is_standard: z.boolean(),
+              }),
+            ),
+          }),
+        },
+      },
+      description: "Version history (spec §5.6)",
     },
     401: {
       content: { "application/json": { schema: errorResponse } },
@@ -135,6 +210,7 @@ libraryRoutes.openapi(listRoute, async (c) => {
     search: query.search,
     tag: query.tag,
     minScore: query.min_score,
+    sort: query.sort,
     page: query.page,
   });
   const memberAliases = new Map(
@@ -149,6 +225,9 @@ libraryRoutes.openapi(listRoute, async (c) => {
         score: p.score,
         usage_count: p.usage_count,
         version: p.version,
+        is_standard: p.is_standard,
+        notes: p.notes,
+        last_used_at: p.last_used_at,
         created_at: p.created_at,
         contributor: memberAliases.get(p.created_by ?? "") ?? "Member",
       })),
@@ -192,6 +271,9 @@ libraryRoutes.openapi(saveRoute, async (c) => {
       score: saved.score,
       usage_count: saved.usage_count,
       version: saved.version,
+      is_standard: saved.is_standard,
+      notes: saved.notes,
+      last_used_at: saved.last_used_at,
       created_at: saved.created_at,
       contributor: member.anon_alias ?? "Member",
     },
@@ -210,5 +292,112 @@ libraryRoutes.openapi(getRoute, async (c) => {
 
   const plaintext = await decryptPrompt(prompt.prompt_text_encrypted, c.env.LIBRARY_ENC_KEY);
   await repos.library.incrementUsage(id);
-  return c.json({ id: prompt.id, prompt_text: plaintext, title: prompt.title }, 200);
+  return c.json(
+    { id: prompt.id, prompt_text: plaintext, title: prompt.title, version: prompt.version },
+    200,
+  );
+});
+
+libraryRoutes.openapi(patchRoute, async (c) => {
+  const { id } = c.req.valid("param");
+  const body = c.req.valid("json");
+  const { repos } = await memberRepos(c);
+  const prompt = await repos.library.findById(id);
+  if (!prompt) return c.json({ error: "not_found", message: "Prompt not found" }, 404);
+  const member = await repos.teams.findMember(prompt.team_id, c.var.userId);
+  if (!member)
+    return c.json({ error: "forbidden", message: "You are not a member of this team" }, 403);
+
+  // Editing the prompt body creates a new version, preserving the original
+  // (spec §5.6 version history).
+  if (body.prompt_text !== undefined) {
+    const promptHash = await sha256Hex(body.prompt_text);
+    const encrypted = await encryptPrompt(body.prompt_text, c.env.LIBRARY_ENC_KEY);
+    const updated = await repos.library.createVersion(prompt, {
+      encryptedPrompt: encrypted,
+      promptHash,
+      title: body.title ?? prompt.title,
+      tags: body.tags ?? prompt.tags ?? [],
+      score: body.score ?? prompt.score ?? 0,
+      createdBy: c.var.userId,
+    });
+    const memberAliases = new Map(
+      (await repos.teams.listMembers(prompt.team_id)).map((m) => [m.user_id, m.anon_alias]),
+    );
+    return c.json(
+      {
+        id: updated.id,
+        title: updated.title,
+        tags: updated.tags ?? [],
+        score: updated.score,
+        usage_count: updated.usage_count,
+        version: updated.version,
+        is_standard: updated.is_standard,
+        notes: updated.notes,
+        last_used_at: updated.last_used_at,
+        created_at: updated.created_at,
+        contributor: memberAliases.get(updated.created_by ?? "") ?? "Member",
+      },
+      200,
+    );
+  }
+
+  // Manager-only governance: notes + Team Standard (spec §5.5/§5.6).
+  if (body.notes !== undefined || body.is_standard !== undefined) {
+    if (member.role !== "manager") {
+      return c.json(
+        { error: "forbidden", message: "Only managers can edit notes or Team Standard" },
+        403,
+      );
+    }
+  }
+  const updated = await repos.library.updateMeta(id, {
+    title: body.title,
+    tags: body.tags,
+    notes: body.notes,
+    isStandard: body.is_standard,
+  });
+  if (!updated) return c.json({ error: "not_found", message: "Prompt not found" }, 404);
+  const memberAliases = new Map(
+    (await repos.teams.listMembers(prompt.team_id)).map((m) => [m.user_id, m.anon_alias]),
+  );
+  return c.json(
+    {
+      id: updated.id,
+      title: updated.title,
+      tags: updated.tags ?? [],
+      score: updated.score,
+      usage_count: updated.usage_count,
+      version: updated.version,
+      is_standard: updated.is_standard,
+      notes: updated.notes,
+      last_used_at: updated.last_used_at,
+      created_at: updated.created_at,
+      contributor: memberAliases.get(updated.created_by ?? "") ?? "Member",
+    },
+    200,
+  );
+});
+
+libraryRoutes.openapi(versionsRoute, async (c) => {
+  const { id } = c.req.valid("param");
+  const { repos } = await memberRepos(c);
+  const prompt = await repos.library.findById(id);
+  if (!prompt) return c.json({ error: "not_found", message: "Prompt not found" }, 404);
+  const member = await repos.teams.findMember(prompt.team_id, c.var.userId);
+  if (!member)
+    return c.json({ error: "forbidden", message: "You are not a member of this team" }, 403);
+  const versions = await repos.library.listVersions(id);
+  return c.json(
+    {
+      versions: versions.map((v) => ({
+        id: v.id,
+        version: v.version,
+        title: v.title,
+        created_at: v.created_at,
+        is_standard: v.is_standard,
+      })),
+    },
+    200,
+  );
 });

@@ -23,6 +23,17 @@ export interface MagicLinkEmail {
   magicLink: string;
 }
 
+export interface TeamInviteEmail extends MagicLinkEmail {
+  teamName: string;
+}
+
+interface EmailTemplate {
+  subject: string;
+  heading: string;
+  body: string;
+  cta: string;
+}
+
 const SES_SERVICE = "ses";
 const SES_HOST = (region: string) => `email.${region}.amazonaws.com`;
 
@@ -129,7 +140,7 @@ export async function signRequest(params: {
   return { authorization, amzDate, payloadHash };
 }
 
-function buildBody(email: MagicLinkEmail): string {
+function buildBody(email: MagicLinkEmail, tpl: EmailTemplate): string {
   const safeLink = email.magicLink
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
@@ -149,14 +160,12 @@ function buildBody(email: MagicLinkEmail): string {
           </tr>
           <tr>
             <td style="padding:32px;">
-              <h1 style="margin:0 0 12px;font-size:18px;color:#111827;">Your sign-in link</h1>
+              <h1 style="margin:0 0 12px;font-size:18px;color:#111827;">${tpl.heading}</h1>
               <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;">
-                Click the button below to sign in to your Revealyst dashboard. This link
-                is single-use and expires shortly — if you didn't request it, you can
-                safely ignore this email.
+                ${tpl.body}
               </p>
               <a href="${safeLink}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;">
-                Sign in to Revealyst
+                ${tpl.cta}
               </a>
               <p style="margin:24px 0 0;font-size:12px;line-height:1.6;color:#9ca3af;word-break:break-all;">
                 Or paste this link into your browser:<br />${safeLink}
@@ -176,13 +185,42 @@ function buildBody(email: MagicLinkEmail): string {
  * @throws Error with a human-readable reason if SES rejects the send.
  */
 export async function sendMagicLinkEmail(config: SesConfig, email: MagicLinkEmail): Promise<void> {
+  await sendEmail(config, email, {
+    subject: "Your Revealyst sign-in link",
+    heading: "Your sign-in link",
+    body: "Click the button below to sign in to your Revealyst dashboard. This link is single-use and expires shortly — if you didn't request it, you can safely ignore this email.",
+    cta: "Sign in to Revealyst",
+  });
+}
+
+/**
+ * Send a team-invite email (spec §5.8: managers invite members via email).
+ * The magic link carries a team_id claim, so verifying it auto-joins the team.
+ */
+export async function sendTeamInviteEmail(
+  config: SesConfig,
+  email: TeamInviteEmail,
+): Promise<void> {
+  await sendEmail(config, email, {
+    subject: `${email.teamName} invited you to Revealyst`,
+    heading: `You're invited to ${email.teamName} 👋`,
+    body: `Your manager invited you to join the ${email.teamName} team on Revealyst. Click below to accept — signing in also adds you to the team, and you can opt into identifiable analytics from your settings. This link is single-use and expires shortly.`,
+    cta: "Accept the invite",
+  });
+}
+
+async function sendEmail(
+  config: SesConfig,
+  email: MagicLinkEmail,
+  tpl: EmailTemplate,
+): Promise<void> {
   const payload = JSON.stringify({
     FromEmailAddress: config.fromEmail,
     Destination: { ToAddresses: [email.to] },
     Content: {
       Simple: {
-        Subject: { Data: "Your Revealyst sign-in link", Charset: "UTF-8" },
-        Body: { Html: { Data: buildBody(email), Charset: "UTF-8" } },
+        Subject: { Data: tpl.subject, Charset: "UTF-8" },
+        Body: { Html: { Data: buildBody(email, tpl), Charset: "UTF-8" } },
       },
     },
   });

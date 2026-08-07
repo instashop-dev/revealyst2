@@ -5,7 +5,10 @@ import { getSuggestions } from "../suggestions.js";
 import type { AppEnv } from "../env.js";
 
 const suggestionRequest = z.object({
-  prompt_hash: z.string().max(128).optional(),
+  prompt_hash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/, "prompt_hash must be a SHA-256 hex digest")
+    .optional(),
   flags: z.array(z.string().min(1).max(100)).max(10).optional(),
   score_breakdown: z.record(z.string().max(32), z.number()).optional(),
   user_id: z.string().max(128).optional(),

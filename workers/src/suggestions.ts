@@ -71,6 +71,9 @@ export function describeDeficiency(flags: string[]): string {
   const labels = flags
     .map((f) => flagInfo(f)?.description ?? f.replace(/_/g, " "))
     .map((label) => label.replace(/\.+$/, "")) // strip trailing periods for clean joins
+    // Sentence-case the joined fragment so "Fix a prompt that The prompt does
+    // not specify…" reads naturally (flag descriptions start capitalized).
+    .map((label) => (label.length > 0 ? label[0]!.toLowerCase() + label.slice(1) : label))
     .filter(Boolean);
   if (labels.length === 0) return "Improve the prompt quality.";
   if (labels.length === 1) return `Fix a prompt that ${labels[0]}.`;

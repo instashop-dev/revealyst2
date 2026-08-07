@@ -1,49 +1,106 @@
-/** Achievements (spec §5.4): badges for milestones. */
-const BADGES = [
-  { id: "first-green", name: "First Green", desc: "Score ≥70 on your first prompt", earned: true },
+import { useEffect, useState } from "react";
+import { api } from "../api/client.js";
+import { useAuth } from "../auth/session.js";
+import type { StatsResponse } from "../api/types.js";
+
+/** Badges earned from the cloud stats (spec §5.4 / §5.8). */
+const BADGES: Array<{
+  id: string;
+  name: string;
+  desc: string;
+  check: (s: StatsResponse) => boolean;
+}> = [
+  {
+    id: "first-green",
+    name: "First Green",
+    desc: "Score ≥70 on your first prompt",
+    check: (s) => s.green_count > 0,
+  },
   {
     id: "clarity-pro",
     name: "Clarity Pro",
     desc: "10 prompts with role clarity >80",
-    earned: false,
+    check: (s) => s.clarity_count >= 10,
   },
   {
     id: "format-master",
     name: "Format Master",
     desc: "Use an output format in 25 prompts",
-    earned: false,
+    check: (s) => s.format_count >= 25,
   },
-  { id: "streak-5", name: "Week Streak", desc: "Score prompts 5 days in a row", earned: false },
+  {
+    id: "streak-5",
+    name: "Week Streak",
+    desc: "Score prompts 5 days in a row",
+    check: (s) => s.streak_days >= 5,
+  },
   {
     id: "team-player",
     name: "Team Player",
     desc: "Share 5 prompts to the team library",
-    earned: false,
+    check: (s) => s.shared_count >= 5,
   },
 ];
 
 export function AchievementsPage() {
+  const { session } = useAuth();
+  const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    api
+      .stats(session.token, "30d")
+      .then((res) => {
+        if (!cancelled) setStats(res);
+      })
+      .catch(() => {
+        if (!cancelled) setStats(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.token]);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-bold">Achievements</h1>
         <p className="text-sm text-zinc-500">Milestones that make your AI skill visible.</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-        {BADGES.map((b) => (
-          <div
-            key={b.id}
-            className={`rounded-2xl border p-5 ${b.earned ? "border-emerald-200 bg-emerald-50/50" : "border-zinc-200"}`}
-          >
-            <div className={`text-3xl ${b.earned ? "" : "opacity-30 grayscale"}`}>
-              {b.earned ? "🏅" : "🔒"}
-            </div>
-            <h3 className="mt-2 font-semibold text-zinc-800">{b.name}</h3>
-            <p className="mt-1 text-xs text-zinc-500">{b.desc}</p>
-            {b.earned && <p className="mt-2 text-xs font-semibold text-emerald-600">Earned ✓</p>}
-          </div>
-        ))}
-      </div>
+
+      {loading && <p className="text-sm text-zinc-400">Loading…</p>}
+
+      {!loading && (
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+          {BADGES.map((b) => {
+            const earned = stats ? b.check(stats) : false;
+            return (
+              <div
+                key={b.id}
+                className={`rounded-2xl border p-5 ${earned ? "border-emerald-200 bg-emerald-50/50" : "border-zinc-200"}`}
+              >
+                <div className={`text-3xl ${earned ? "" : "opacity-30 grayscale"}`}>
+                  {earned ? "🏅" : "🔒"}
+                </div>
+                <h3 className="mt-2 font-semibold text-zinc-800">{b.name}</h3>
+                <p className="mt-1 text-xs text-zinc-500">{b.desc}</p>
+                {earned && <p className="mt-2 text-xs font-semibold text-emerald-600">Earned ✓</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!loading && !stats && (
+        <p className="text-sm text-zinc-500">
+          Score prompts with the extension to start unlocking achievements.
+        </p>
+      )}
     </div>
   );
 }

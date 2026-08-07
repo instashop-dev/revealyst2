@@ -65,6 +65,7 @@ describe("teams repo", () => {
 describe("events repo", () => {
   beforeAll(async () => {
     await repos.events.insert({
+      userId,
       userAnonId: "anon-jamie",
       teamId,
       promptHash: "hash1",
@@ -80,6 +81,7 @@ describe("events repo", () => {
       llmPlatform: "chat.openai.com",
     });
     await repos.events.insert({
+      userId,
       userAnonId: "anon-jamie",
       teamId,
       promptHash: "hash2",
@@ -95,6 +97,7 @@ describe("events repo", () => {
       llmPlatform: "claude.ai",
     });
     await repos.events.insert({
+      userId: null,
       userAnonId: "anon-rohan",
       teamId,
       promptHash: "hash3",
@@ -111,6 +114,7 @@ describe("events repo", () => {
     });
     // a stale event outside the window (should be excluded from aggregates)
     await repos.events.insert({
+      userId: null,
       userAnonId: "anon-rohan",
       teamId,
       promptHash: "hash4",
@@ -128,6 +132,7 @@ describe("events repo", () => {
     });
     // a personal (non-team) event for the user-history assertion
     await repos.events.insert({
+      userId,
       userAnonId: "anon-jamie",
       teamId: null,
       promptHash: "hash5",
@@ -145,7 +150,7 @@ describe("events repo", () => {
   });
 
   it("returns the user's prompt history newest-first", async () => {
-    const history = await repos.events.userHistory("anon-jamie", "2020-01-01T00:00:00.000Z");
+    const history = await repos.events.userHistory(userId, "2020-01-01T00:00:00.000Z");
     expect(history).toHaveLength(3);
     expect(history[0]?.prompt_hash).toBe("hash5");
   });
@@ -155,7 +160,7 @@ describe("events repo", () => {
     const stats = await repos.events.teamStats(teamId, since);
 
     // avg of 45, 82, 70 (the stale 10 is outside the window)
-    expect(stats.avgScore7d).toBe(66);
+    expect(stats.avgScore).toBe(66);
 
     // weakness distribution
     const weaknessFlags = stats.commonWeaknesses.map((w) => w.flag).sort();

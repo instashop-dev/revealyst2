@@ -8,6 +8,15 @@ export function createFeedbackRepo(db: SqlDb) {
         [userId, suggestionId, wasAccepted],
       );
     },
+
+    /** Count of accepted suggestions for the personal dashboard (spec §5.4). */
+    async countAccepted(userId: string): Promise<number> {
+      const { rows } = await db.query<{ n: string }>(
+        "SELECT COUNT(*)::text AS n FROM suggestions_feedback WHERE user_id = $1 AND was_accepted = true",
+        [userId],
+      );
+      return Number(rows[0]?.n ?? 0);
+    },
   };
 }
 
