@@ -44,7 +44,9 @@ describe("web API client", () => {
           top_prompts: [],
           volume_by_platform: [],
           volume_by_day: [],
+          score_by_day: [],
           trends_by_user: [],
+          identifiable: false,
         }),
       ),
     );
@@ -54,6 +56,94 @@ describe("web API client", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer sess" }),
       }),
+    );
+  });
+
+  it("lists my teams with the auth header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ teams: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await api.myTeams("sess");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/teams`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
+  });
+
+  it("fetches history with period and min score", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ events: [], note: "n" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await api.history("sess", "30d", undefined, 70);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/history?period=30d&min_score=70`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
+  });
+
+  it("fetches personal stats for a period", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ period: "7d", prompts_count: 0 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await api.stats("sess", "7d");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/stats?period=7d`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
+  });
+
+  it("lists library prompts with sort, tag and min score", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ prompts: [], total: 0 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await api.libraryList("sess", "team-1", {
+      sort: "highest_score",
+      tag: "email",
+      minScore: 70,
+      page: 2,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/library?team_id=team-1&tag=email&min_score=70&sort=highest_score&page=2`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
+  });
+
+  it("patches a library card via PATCH", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ id: "p1", is_standard: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    await api.libraryPatch("sess", "p1", { is_standard: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/library/p1`,
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("is_standard"),
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
+  });
+
+  it("saves a prompt to the library with a body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ id: "p1" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await api.librarySave("sess", { team_id: "team-1", prompt_text: "x", title: "T", tags: ["a"] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/library`,
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("team-1"),
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
+  });
+
+  it("surfaces a duplicate save (409) with its status", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ message: "Already saved" }, 409)));
+    await expect(api.librarySave("sess", { team_id: "t", prompt_text: "x" })).rejects.toMatchObject(
+      { status: 409, message: "Already saved" },
     );
   });
 

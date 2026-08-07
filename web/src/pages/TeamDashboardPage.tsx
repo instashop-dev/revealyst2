@@ -1,38 +1,101 @@
-import { useState } from "react";
-import { BarList } from "../components/charts.js";
+import { useEffect, useState } from "react";
+import { BarList, TrendChart } from "../components/charts.js";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/session.js";
+import { useTeams } from "../teams.js";
 import type { DashboardResponse } from "../api/types.js";
 
 /**
- * Team Manager dashboard (spec §5.5): fully anonymised aggregates — no
- * individual prompts are ever shown; members appear as User A/B pseudonyms.
+ * Team Manager dashboard (spec §5.5): aggregated, anonymised team analytics.
+ * Only managers can load it (server 403 is the hard gate); members are shown
+ * as pseudonyms unless every member opts in to identifiable mode.
  */
 export function TeamDashboardPage() {
-  const { user, session } = useAuth();
-  const [teamId, setTeamId] = useState("");
+  const { session } = useAuth();
+  const { teams } = useTeams();
+  const [selectedTeamId, setSelectedTeamId] = useState("");
   const [period, setPeriod] = useState<"7d" | "30d">("7d");
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [reminderCopied, setReminderCopied] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  async function load() {
-    if (!session || !teamId.trim()) return;
+  const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
+  const isManager = selectedTeam?.role === "manager";
+
+  // Default to the first team once teams load.
+  useEffect(() => {
+    if (teams.length > 0 && !teams.some((t) => t.id === selectedTeamId)) {
+      setSelectedTeamId(teams[0]!.id);
+    }
+  }, [teams, selectedTeamId]);
+
+  // Auto-load the dashboard whenever team/period changes.
+  useEffect(() => {
+    if (!session || !selectedTeamId) return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
-    try {
-      setData(await api.teamDashboard(session.token, teamId.trim(), period));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load dashboard");
-    } finally {
-      setLoading(false);
-    }
-  }
+    api
+      .teamDashboard(session.token, selectedTeamId, period)
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load dashboard");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.token, selectedTeamId, period, reloadKey]);
 
   const weaknessRows = (data?.common_weaknesses ?? []).map((w) => ({
     label: w.flag.replace(/_/g, " "),
     count: w.count,
   }));
+  const scoreTrend = (data?.score_by_day ?? []).map((d) => ({ label: d.day, value: d.avg_score }));
+  const promptCount = (data?.volume_by_day ?? []).reduce((n, d) => n + d.count, 0);
+
+  async function copyPrompt(id: string) {
+    if (!session) return;
+    try {
+      const res = await api.libraryGet(session.token, id);
+      await navigator.clipboard.writeText(res.prompt_text);
+      setCopiedId(id);
+    } catch {
+      // Clipboard unavailable — ignore.
+    }
+  }
+
+  async function markStandard(id: string) {
+    if (!session || !isManager) return;
+    try {
+      await api.libraryPatch(session.token, id, { is_standard: true });
+      setReloadKey((k) => k + 1);
+    } catch {
+      // Manager-only endpoint; ignore.
+    }
+  }
+
+  async function coachingReminder() {
+    if (!session || !data) return;
+    const top = data.common_weaknesses[0];
+    const text = [
+      `Coaching reminder — ${selectedTeam?.name ?? "team"} (${data.period})`,
+      `Team average PQS: ${data.avg_score ?? "—"}`,
+      top
+        ? `Top weakness: ${top.flag.replace(/_/g, " ")} (${top.count} prompts)`
+        : "Top weakness: none yet",
+      `Prompts this period: ${promptCount}`,
+    ].join("\n");
+    await navigator.clipboard.writeText(text);
+    setReminderCopied(true);
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -43,21 +106,20 @@ export function TeamDashboardPage() {
         </p>
       </div>
 
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void load();
-        }}
-      >
+      <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-sm">
-          Team id
-          <input
-            value={teamId}
-            onChange={(e) => setTeamId(e.target.value)}
-            placeholder="team UUID from Settings"
+          Team
+          <select
+            value={selectedTeamId}
+            onChange={(e) => setSelectedTeamId(e.target.value)}
             className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-          />
+          >
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.role})
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col gap-1 text-sm">
           Period
@@ -70,10 +132,7 @@ export function TeamDashboardPage() {
             <option value="30d">Last 30 days</option>
           </select>
         </label>
-        <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-          Load
-        </button>
-      </form>
+      </div>
 
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {loading && <p className="text-sm text-zinc-400">Loading…</p>}
@@ -89,9 +148,7 @@ export function TeamDashboardPage() {
             </div>
             <div className="rounded-2xl border border-zinc-200 p-5">
               <p className="text-xs text-zinc-500">Prompts this period</p>
-              <p className="font-mono text-3xl font-bold">
-                {data.volume_by_day.reduce((n, d) => n + d.count, 0)}
-              </p>
+              <p className="font-mono text-3xl font-bold">{promptCount}</p>
             </div>
             <div className="rounded-2xl border border-zinc-200 p-5">
               <p className="text-xs text-zinc-500">Platforms</p>
@@ -106,8 +163,74 @@ export function TeamDashboardPage() {
           </div>
 
           <section className="rounded-2xl border border-zinc-200 p-6">
+            <h2 className="mb-3 text-sm font-semibold text-zinc-700">Team score trend</h2>
+            <TrendChart points={scoreTrend} />
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 p-6">
             <h2 className="mb-3 text-sm font-semibold text-zinc-700">Common weaknesses</h2>
             <BarList rows={weaknessRows} />
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 p-6">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-zinc-700">Top prompts (library)</h2>
+              <button
+                onClick={() => void coachingReminder()}
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+              >
+                {reminderCopied ? "Reminder copied ✓" : "Coaching reminder"}
+              </button>
+            </div>
+            <ul className="space-y-3">
+              {data.top_prompts.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-100 p-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-zinc-800">
+                        {p.title ?? "Untitled prompt"}
+                      </span>
+                      {p.is_standard && (
+                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                          Team Standard
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-400">
+                      score {p.score ?? "—"} · used {p.usage_count}× · v{p.version} · by{" "}
+                      {p.contributor} · {new Date(p.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => void copyPrompt(p.id)}
+                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                    >
+                      {copiedId === p.id ? "Copied ✓" : "Copy"}
+                    </button>
+                    {isManager && (
+                      <button
+                        onClick={() => void markStandard(p.id)}
+                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                      >
+                        Mark Team Standard
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {data.top_prompts.length === 0 && (
+              <p className="text-sm text-zinc-400">No prompts shared to the library yet.</p>
+            )}
+            {!isManager && (
+              <p className="mt-2 text-xs text-zinc-400">
+                Read-only view — only managers can mark prompts as Team Standard.
+              </p>
+            )}
           </section>
 
           <section className="rounded-2xl border border-zinc-200 p-6">
@@ -121,29 +244,26 @@ export function TeamDashboardPage() {
                 </li>
               ))}
             </ul>
+            {data.trends_by_user.length === 0 && (
+              <p className="text-sm text-zinc-400">No member trends in this period.</p>
+            )}
           </section>
 
-          <section className="rounded-2xl border border-zinc-200 p-6">
-            <h2 className="mb-3 text-sm font-semibold text-zinc-700">
-              Top prompts (hashes only — privacy)
-            </h2>
-            <ul className="space-y-1 text-sm text-zinc-600">
-              {data.top_prompts.map((p) => (
-                <li key={p.prompt_hash} className="flex justify-between">
-                  <code className="truncate">{p.prompt_hash.slice(0, 20)}…</code>
-                  <span>
-                    <b>{p.best_score}</b> · used {p.occurrences}×
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <div className="rounded-2xl border border-zinc-200 p-5">
+            <p className="text-xs text-zinc-500">Identifiable mode</p>
+            <p className="text-sm font-semibold text-zinc-700">
+              {data.identifiable ? "On — first name + last initial" : "Off — pseudonyms only"}
+            </p>
+            <p className="mt-1 text-xs text-zinc-400">
+              Identifiable mode requires every member to opt in before individual names appear.
+            </p>
+          </div>
         </>
       )}
 
-      {!data && !loading && (
+      {!data && !loading && !error && (
         <p className="text-sm text-zinc-400">
-          Enter your team id above (see Settings) to load analytics. Signed in as {user?.email}.
+          Select a team above to load analytics. Signed in as {session?.user.email}.
         </p>
       )}
     </div>

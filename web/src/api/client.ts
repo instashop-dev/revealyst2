@@ -1,10 +1,21 @@
-import type { DashboardResponse, LibraryCard, Session, User } from "./types.js";
+import type {
+  DashboardResponse,
+  HistoryResponse,
+  LibraryCard,
+  LibraryDetail,
+  LibraryVersion,
+  Session,
+  StatsResponse,
+  Team,
+  TeamMember,
+  User,
+} from "./types.js";
 
 export const API_BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ??
   "https://revealyst-workers.thapi.workers.dev";
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
@@ -13,6 +24,10 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * Thin fetch wrapper. `init.method` selects the verb (GET/POST/PATCH/…) — the
+ * JSON `Content-Type` header is set for every call so POST/PATCH bodies work.
+ */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -42,20 +57,81 @@ export const api = {
     return request("/api/auth/me", { headers: authed(token) });
   },
 
-  libraryList(
-    token: string,
-    teamId: string,
-    params: { search?: string; tag?: string; page?: number } = {},
-  ): Promise<{ prompts: LibraryCard[]; total: number }> {
-    const qs = new URLSearchParams({ team_id: teamId, ...(params as Record<string, string>) });
-    return request(`/api/library?${qs}`, { headers: authed(token) });
+  // --- Teams -----------------------------------------------------------------
+
+  myTeams(token: string): Promise<{ teams: Team[] }> {
+    return request("/api/teams", { headers: authed(token) });
   },
 
-  libraryGet(
+  createTeam(token: string, name: string): Promise<Team> {
+    return request("/api/team", {
+      method: "POST",
+      headers: authed(token),
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  inviteMember(
     token: string,
-    id: string,
-  ): Promise<{ id: string; prompt_text: string; title: string | null }> {
-    return request(`/api/library/${id}`, { headers: authed(token) });
+    teamId: string,
+    email: string,
+  ): Promise<{ message: string; dev_link?: string }> {
+    return request("/api/team/invite", {
+      method: "POST",
+      headers: authed(token),
+      body: JSON.stringify({ team_id: teamId, email }),
+    });
+  },
+
+  teamMembers(
+    token: string,
+    teamId: string,
+  ): Promise<{
+    members: TeamMember[];
+    anonymize_identities: boolean;
+    identifiable_enabled: boolean;
+  }> {
+    return request(`/api/team/members?team_id=${encodeURIComponent(teamId)}`, {
+      headers: authed(token),
+    });
+  },
+
+  teamOptIn(
+    token: string,
+    teamId: string,
+    enabled: boolean,
+  ): Promise<{ opt_in_identifiable: boolean; identifiable_enabled: boolean }> {
+    return request("/api/team/opt-in", {
+      method: "POST",
+      headers: authed(token),
+      body: JSON.stringify({ team_id: teamId, enabled }),
+    });
+  },
+
+  teamSettings(token: string, teamId: string, anonymizeIdentities: boolean): Promise<Team> {
+    return request("/api/team/settings", {
+      method: "PATCH",
+      headers: authed(token),
+      body: JSON.stringify({ team_id: teamId, anonymize_identities: anonymizeIdentities }),
+    });
+  },
+
+  // --- Personal analytics ----------------------------------------------------
+
+  history(
+    token: string,
+    period: "7d" | "30d" | "all" = "all",
+    platform?: string,
+    minScore?: number,
+  ): Promise<HistoryResponse> {
+    const qs = new URLSearchParams({ period });
+    if (platform) qs.set("platform", platform);
+    if (minScore !== undefined) qs.set("min_score", String(minScore));
+    return request(`/api/history?${qs}`, { headers: authed(token) });
+  },
+
+  stats(token: string, period: "7d" | "30d" = "7d"): Promise<StatsResponse> {
+    return request(`/api/stats?period=${period}`, { headers: authed(token) });
   },
 
   teamDashboard(
@@ -67,6 +143,66 @@ export const api = {
       headers: authed(token),
     });
   },
-};
 
-export { ApiError };
+  // --- Prompt library --------------------------------------------------------
+
+  libraryList(
+    token: string,
+    teamId: string,
+    params: {
+      search?: string;
+      tag?: string;
+      minScore?: number;
+      sort?: "most_used" | "highest_score" | "newest";
+      page?: number;
+    } = {},
+  ): Promise<{ prompts: LibraryCard[]; total: number }> {
+    const qs = new URLSearchParams({ team_id: teamId });
+    if (params.search) qs.set("search", params.search);
+    if (params.tag) qs.set("tag", params.tag);
+    if (params.minScore !== undefined) qs.set("min_score", String(params.minScore));
+    if (params.sort) qs.set("sort", params.sort);
+    if (params.page !== undefined) qs.set("page", String(params.page));
+    return request(`/api/library?${qs}`, { headers: authed(token) });
+  },
+
+  librarySave(
+    token: string,
+    body: { team_id: string; prompt_text: string; title?: string; tags?: string[]; score?: number },
+  ): Promise<LibraryCard> {
+    return request("/api/library", {
+      method: "POST",
+      headers: authed(token),
+      body: JSON.stringify(body),
+    });
+  },
+
+  libraryGet(token: string, id: string): Promise<LibraryDetail> {
+    return request(`/api/library/${encodeURIComponent(id)}`, { headers: authed(token) });
+  },
+
+  libraryPatch(
+    token: string,
+    id: string,
+    patch: {
+      title?: string;
+      tags?: string[];
+      notes?: string | null;
+      is_standard?: boolean;
+      prompt_text?: string;
+      score?: number;
+    },
+  ): Promise<LibraryCard> {
+    return request(`/api/library/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: authed(token),
+      body: JSON.stringify(patch),
+    });
+  },
+
+  libraryVersions(token: string, id: string): Promise<{ versions: LibraryVersion[] }> {
+    return request(`/api/library/${encodeURIComponent(id)}/versions`, {
+      headers: authed(token),
+    });
+  },
+};

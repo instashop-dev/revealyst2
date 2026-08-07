@@ -4,13 +4,13 @@ import { describeDeficiency, selectStaticPatterns } from "../src/suggestions.js"
 describe("describeDeficiency", () => {
   it("describes a single deficiency (spec §7: embedding query text)", () => {
     expect(describeDeficiency(["missing_role"])).toBe(
-      "Fix a prompt that No expert role or persona is defined for the AI.",
+      "Fix a prompt that no expert role or persona is defined for the AI.",
     );
   });
 
   it("joins multiple deficiencies cleanly", () => {
     expect(describeDeficiency(["missing_role", "no_examples"])).toBe(
-      "Fix a prompt that No expert role or persona is defined for the AI and No example inputs or outputs are provided.",
+      "Fix a prompt that no expert role or persona is defined for the AI and no example inputs or outputs are provided.",
     );
   });
 
