@@ -251,6 +251,7 @@ describe("personal dashboard data (§5.4)", () => {
             examples_included: 40,
           },
           llm_platform: "chat.openai.com",
+          rating: 1,
           timestamp: "2026-08-05T10:00:00.000Z",
         },
         memberToken,
@@ -272,6 +273,7 @@ describe("personal dashboard data (§5.4)", () => {
             examples_included: 10,
           },
           llm_platform: "claude.ai",
+          rating: -1,
           timestamp: "2026-08-04T10:00:00.000Z",
         },
         memberToken,
@@ -292,9 +294,13 @@ describe("personal dashboard data (§5.4)", () => {
       env,
     );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { events: Array<{ score: number; prompt_hash: string }> };
+    const body = (await res.json()) as {
+      events: Array<{ score: number; prompt_hash: string; rating: number | null }>;
+    };
     expect(body.events).toHaveLength(2);
     expect(body.events[0]?.score).toBe(82);
+    expect(body.events[0]?.rating).toBe(1);
+    expect(body.events[1]?.rating).toBe(-1);
     expect(JSON.stringify(body)).not.toContain("Write a");
   });
 
@@ -402,6 +408,83 @@ describe("library governance (§5.6)", () => {
     const card = (await asManager.json()) as { is_standard: boolean; notes: string };
     expect(card.is_standard).toBe(true);
     expect(card.notes).toContain("weekly outreach");
+  });
+
+  it("carries manager notes/standard onto a text-edit version (spec §5.6)", async () => {
+    // Patch the current head of the chain (the newest version), so the new
+    // version bumps to 3.
+    const before = await app.request(
+      `/api/library/${promptId}/versions`,
+      { headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    const beforeBody = (await before.json()) as {
+      versions: Array<{ id: string; version: number }>;
+    };
+    const head = beforeBody.versions.sort((a, b) => b.version - a.version)[0]!;
+
+    const res = await app.request(
+      "/api/library/" + head.id,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${managerToken}` },
+        body: JSON.stringify({
+          prompt_text: "Write a short cold email — with bullet points.",
+          notes: "Keep this for Q3.",
+          is_standard: true,
+        }),
+      },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const card = (await res.json()) as {
+      version: number;
+      is_standard: boolean;
+      notes: string;
+    };
+    expect(card.version).toBe(head.version + 1);
+    expect(card.is_standard).toBe(true);
+    expect(card.notes).toContain("Q3");
+
+    const versions = await app.request(
+      `/api/library/${promptId}/versions`,
+      { headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    const vBody = (await versions.json()) as {
+      versions: Array<{ version: number; is_standard: boolean }>;
+    };
+    // The new version is the head of the chain and keeps its governance flags.
+    expect(vBody.versions.map((v) => v.version).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    expect(vBody.versions.find((v) => v.version === 3)?.is_standard).toBe(true);
+  });
+
+  it("member text-edits preserve governance flags (cannot strip Team Standard)", async () => {
+    const versions = await app.request(
+      `/api/library/${promptId}/versions`,
+      { headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    const vBody = (await versions.json()) as {
+      versions: Array<{ id: string; version: number; is_standard: boolean }>;
+    };
+    const head = vBody.versions.sort((a, b) => b.version - a.version)[0]!;
+    expect(head.is_standard).toBe(true);
+
+    const res = await app.request(
+      "/api/library/" + head.id,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${memberToken}` },
+        body: JSON.stringify({ prompt_text: "Write a short cold email — v4 by a member." }),
+      },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const card = (await res.json()) as { version: number; is_standard: boolean };
+    // A member may edit the text, but the new version inherits Team Standard.
+    expect(card.version).toBe(head.version + 1);
+    expect(card.is_standard).toBe(true);
   });
 
   it("lists with sort + returns governance fields", async () => {

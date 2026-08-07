@@ -36,6 +36,8 @@ export interface PromptEventRow {
   breakdown: Record<string, number> | null;
   flags: string[] | null;
   llm_platform: string | null;
+  /** Thumbs up/down recorded against this prompt: -1, 0, 1 or null. */
+  rating: number | null;
   created_at: string;
 }
 

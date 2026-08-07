@@ -85,6 +85,7 @@ export interface HistoryEvent {
   breakdown: Record<string, number>;
   flags: string[];
   llm_platform: string | null;
+  rating: number | null;
   created_at: string;
 }
 

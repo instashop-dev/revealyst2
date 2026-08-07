@@ -6,6 +6,8 @@ const engine = new RuleScoringEngine();
 export interface ScoreUpdate {
   result: ScoreResult;
   hash: string;
+  /** The exact prompt text that was scored (used for local history). */
+  prompt: string;
 }
 
 /**
@@ -16,7 +18,7 @@ export interface ScoreUpdate {
 export async function scorePrompt(prompt: string): Promise<ScoreUpdate> {
   const result = await engine.score(prompt);
   const hash = await sha256Hex(prompt);
-  return { result, hash };
+  return { result, hash, prompt };
 }
 
 /**

@@ -313,7 +313,7 @@ libraryRoutes.openapi(patchRoute, async (c) => {
   if (body.prompt_text !== undefined) {
     const promptHash = await sha256Hex(body.prompt_text);
     const encrypted = await encryptPrompt(body.prompt_text, c.env.LIBRARY_ENC_KEY);
-    const updated = await repos.library.createVersion(prompt, {
+    let updated = await repos.library.createVersion(prompt, {
       encryptedPrompt: encrypted,
       promptHash,
       title: body.title ?? prompt.title,
@@ -321,6 +321,15 @@ libraryRoutes.openapi(patchRoute, async (c) => {
       score: body.score ?? prompt.score ?? 0,
       createdBy: c.var.userId,
     });
+    // Carry manager governance fields onto the new version (a manager may
+    // edit the text and the notes/standard in the same request).
+    if (member.role === "manager" && (body.notes !== undefined || body.is_standard !== undefined)) {
+      const meta = await repos.library.updateMeta(updated.id, {
+        notes: body.notes,
+        isStandard: body.is_standard,
+      });
+      if (meta) updated = meta;
+    }
     const memberAliases = new Map(
       (await repos.teams.listMembers(prompt.team_id)).map((m) => [m.user_id, m.anon_alias]),
     );

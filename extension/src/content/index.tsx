@@ -3,17 +3,30 @@ import { createElement } from "react";
 import type { ScoreResult } from "@revealyst/scoring";
 import type { Suggestion } from "../shared/types.js";
 import type { ScoreEventPayload } from "../shared/types.js";
+import { CLIENT_TIPS } from "../shared/types.js";
 import styles from "./styles.css?inline";
 import { detectPlatform, waitForInput, type PlatformDef } from "../lib/platform.js";
 import { applySuggestion, getInputText, isEditable } from "../lib/apply.js";
 import { createDebouncedScorer, scorePrompt } from "../lib/scoring.js";
-import { completeOnboarding, getSettings, isOnboarded, setSettings } from "../lib/storage.js";
+import {
+  appendLocalHistory,
+  clearLocalHistory,
+  completeOnboarding,
+  getLocalHistory,
+  getSettings,
+  isOnboarded,
+  rateLocalHistory,
+  setSettings,
+} from "../lib/storage.js";
 import { Sidebar } from "./sidebar.js";
+import type { TeamOption } from "./settings-panel.js";
 
 /**
  * Content script: injects the Revealyst sidebar (shadow DOM, 300px, right
  * side) into supported LLM pages, scores prompts locally on a 2s debounce,
- * requests suggestions via the service worker, and applies them with one click.
+ * requests suggestions via the service worker, applies them with one click,
+ * records thumbs ratings (visible after the LLM responds — spec §5.1) and
+ * saves prompts to the team library using the settings token/team.
  */
 console.log("[revealyst] content script starting");
 
@@ -27,6 +40,15 @@ async function main(): Promise<void> {
 
 async function mainUnsafe(): Promise<void> {
   const settings = await getSettings();
+  // Stable per-install anonymous id (spec §5.5 pseudonyms): groups team trends
+  // before sign-in; never links to an identity. Generated once, persisted.
+  if (!settings.anonId) {
+    const anonId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `anon-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    Object.assign(settings, await setSettings({ anonId }));
+  }
   const platform = detectPlatform(window.location.href, settings.platformSelectors);
   if (!platform) return; // unsupported page — do nothing
   const def: PlatformDef = platform;
@@ -47,7 +69,7 @@ async function mainUnsafe(): Promise<void> {
 
   // ---- state -------------------------------------------------------------
   const scorer = createDebouncedScorer();
-  const history: ScoreResult[] = [];
+  let localHistory = await getLocalHistory();
   let result: ScoreResult | null = null;
   let suggestions: Suggestion[] = [];
   let suggestionSource: "vectorize+llm" | "static" | null = null;
@@ -56,6 +78,9 @@ async function mainUnsafe(): Promise<void> {
   let showOnboarding = !(await isOnboarded());
   let inputMissing = false;
   let input: HTMLElement | null = null;
+  let lastHash = "";
+  let lastPromptText = "";
+  let thumbsVisible = false;
 
   function rerender(): void {
     reactRoot.render(
@@ -69,22 +94,11 @@ async function mainUnsafe(): Promise<void> {
         inputMissing,
         truncated: result?.meta.truncated ?? false,
         lastApplied,
-        history: [...history],
+        thumbsVisible,
+        localHistory: [...localHistory],
         onPauseToggle: () => void togglePause(),
         onApply: (s) => applySuggestionToInput(s),
-        onThumbs: (accepted) => {
-          void chrome.runtime.sendMessage({
-            type: "LOG_EVENT",
-            apiBase: settings.apiBase,
-            payload: {
-              prompt_hash: `feedback:${Date.now()}`,
-              score: result?.score ?? 0,
-              flags: accepted ? [] : ["feedback_down"],
-              breakdown: result?.breakdown ?? {},
-              llm_platform: def.id,
-            },
-          });
-        },
+        onThumbs: (rating) => void recordRating(rating),
         onSaveToLibrary: () => void saveCurrentToLibrary(),
         onOnboardingDone: () => {
           showOnboarding = false;
@@ -97,27 +111,90 @@ async function mainUnsafe(): Promise<void> {
             rerender();
           });
         },
+        onSaveSettings: (patch) => {
+          void setSettings(patch).then((s) => {
+            Object.assign(settings, s);
+            rerender();
+          });
+        },
+        onClearHistory: () => {
+          void clearLocalHistory().then(() => {
+            localHistory = [];
+            rerender();
+          });
+        },
+        loadTeams: (token) => loadTeamsFromApi(token),
       }),
     );
   }
   const reactRoot = createRoot(root);
 
+  // ---- LLM response detection (spec §5.1: thumbs appear after the response) --
+  function checkResponseDetected(): boolean {
+    for (const selector of def.responseSelectors) {
+      if (document.querySelector(selector)) return true;
+    }
+    return false;
+  }
+  thumbsVisible = checkResponseDetected();
+  const responseObserver = new MutationObserver(() => {
+    if (!thumbsVisible && checkResponseDetected()) {
+      thumbsVisible = true;
+      rerender();
+    }
+  });
+  responseObserver.observe(document.body, { childList: true, subtree: true });
+
+  // ---- event sync (attributed when the user has connected their account) ---
+  function sendEvent(payload: ScoreEventPayload): void {
+    void (async () => {
+      const attempt = (body: ScoreEventPayload, withTeam: boolean) =>
+        chrome.runtime.sendMessage({
+          type: "LOG_EVENT",
+          apiBase: settings.apiBase,
+          token: settings.apiToken || undefined,
+          payload: {
+            ...body,
+            user_anon_id: settings.anonId,
+            ...(withTeam && settings.teamId ? { team_id: settings.teamId } : {}),
+          },
+        });
+      const res = (await attempt(payload, true)) as { status?: number } | undefined;
+      // Team attribution is membership-checked; if the user left the team,
+      // drop it and still record the event on the personal dashboard.
+      if (res?.status === 403 && settings.teamId) {
+        await attempt(payload, false);
+      }
+    })().catch(() => undefined);
+  }
+
   // ---- scoring + suggestions ---------------------------------------------
-  function onScored(update: { result: ScoreResult; hash: string }): void {
+  function onScored(update: { result: ScoreResult; hash: string; prompt: string }): void {
     const flagsChanged =
       !result || JSON.stringify(result.flags) !== JSON.stringify(update.result.flags);
     result = update.result;
-    history.unshift(update.result);
-    if (history.length > 12) history.pop();
+    lastHash = update.hash;
+    lastPromptText = update.prompt;
+    localHistory = [
+      {
+        prompt: lastPromptText.slice(0, 2000),
+        score: update.result.score,
+        flags: update.result.flags,
+        platform: def.id,
+        rating: null,
+        createdAt: new Date().toISOString(),
+      },
+      ...localHistory,
+    ].slice(0, 100);
+    void appendLocalHistory(localHistory[0]!);
     if (settings.cloudSync) {
-      const payload: ScoreEventPayload = {
+      sendEvent({
         prompt_hash: update.hash,
         score: update.result.score,
         flags: update.result.flags,
         breakdown: update.result.breakdown,
         llm_platform: def.id,
-      };
-      void chrome.runtime.sendMessage({ type: "LOG_EVENT", apiBase: settings.apiBase, payload });
+      });
     }
     if (flagsChanged) {
       // Only refetch suggestions when the deficiencies changed; otherwise keep
@@ -130,6 +207,7 @@ async function mainUnsafe(): Promise<void> {
           type: "GET_SUGGESTIONS",
           flags: update.result.flags,
           breakdown: update.result.breakdown,
+          promptHash: update.hash,
           apiBase: settings.apiBase,
         })
         .then((res) => {
@@ -149,7 +227,11 @@ async function mainUnsafe(): Promise<void> {
           rerender();
         })
         .catch(() => {
+          // Spec §7: server unreachable → static generic tips from a
+          // client-side fallback list.
           busy = false;
+          suggestions = CLIENT_TIPS;
+          suggestionSource = "static";
           rerender();
         });
     }
@@ -174,34 +256,103 @@ async function mainUnsafe(): Promise<void> {
     if (!isEditable(input)) return;
     lastApplied = suggestion.preview;
     applySuggestion(input, suggestion);
+    // Record acceptance feedback (spec §5.6 suggestions_feedback) when the
+    // user has connected their account; silent otherwise (no account yet).
+    if (settings.apiToken) {
+      void chrome.runtime
+        .sendMessage({
+          type: "POST_FEEDBACK",
+          suggestionId: suggestion.id,
+          wasAccepted: true,
+          token: settings.apiToken,
+          apiBase: settings.apiBase,
+        })
+        .catch(() => undefined);
+    }
     // Re-score immediately after the suggestion is applied.
     const text = getInputText(input);
     void scorePrompt(text).then(onScored);
     rerender();
   }
 
+  async function recordRating(rating: 1 | -1): Promise<void> {
+    if (!lastHash) return;
+    // Local history (device-only) gets the rating so the snippet view shows it.
+    void rateLocalHistory(lastPromptText.slice(0, 2000), def.id, rating).then(() => {
+      localHistory = localHistory.map((h) =>
+        h.prompt === lastPromptText.slice(0, 2000) && h.platform === def.id && h.rating === null
+          ? { ...h, rating }
+          : h,
+      );
+      rerender();
+    });
+    // Cloud event: only scores/flags/hash/rating leave the device (privacy §5.7).
+    if (settings.cloudSync) {
+      sendEvent({
+        prompt_hash: lastHash,
+        score: result?.score ?? 0,
+        flags: result?.flags ?? [],
+        breakdown: result?.breakdown ?? {},
+        llm_platform: def.id,
+        rating,
+      });
+    }
+  }
+
   async function saveCurrentToLibrary(): Promise<void> {
     if (!isEditable(input)) return;
     const text = getInputText(input);
     if (!text.trim()) return;
+    if (!settings.apiToken) {
+      lastApplied = "Add your API token in Settings (⚙️)";
+      rerender();
+      return;
+    }
+    if (!settings.teamId) {
+      lastApplied = "Pick a team in Settings (⚙️)";
+      rerender();
+      return;
+    }
     try {
-      await chrome.runtime.sendMessage({
+      const res = (await chrome.runtime.sendMessage({
         type: "SAVE_LIBRARY",
         apiBase: settings.apiBase,
+        token: settings.apiToken,
         payload: {
-          team_id: "", // requires an opted-in team id; surfaced in Settings
+          team_id: settings.teamId,
           prompt_text: text,
           title: text.slice(0, 60),
           tags: [def.id],
           score: result?.score ?? 0,
         },
-      });
+      })) as { error?: string; status?: number } | { id: string };
+      // sendMessage resolves with {error} on failure (service worker catch).
+      if (res && "error" in res && res.error) {
+        const err = new Error(res.error) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
       lastApplied = "Saved to library ⭐";
       rerender();
-    } catch {
-      lastApplied = "Save failed — team sync off?";
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      const message = error instanceof Error ? error.message : "Save failed";
+      lastApplied =
+        status === 401 || message.includes("Unauthorized")
+          ? "Session expired — refresh your token in Settings"
+          : `Save failed — ${message}`;
       rerender();
     }
+  }
+
+  async function loadTeamsFromApi(token: string): Promise<TeamOption[]> {
+    const res = (await chrome.runtime.sendMessage({
+      type: "GET_TEAMS",
+      token,
+      apiBase: settings.apiBase,
+    })) as { error?: string } | TeamOption[];
+    if (Array.isArray(res)) return res;
+    throw new Error(res.error ?? "teams failed");
   }
 
   async function togglePause(): Promise<void> {

@@ -19,6 +19,8 @@ export function SettingsPage() {
   const [members, setMembers] = useState<TeamMember[] | null>(null);
   const [membersLoading, setMembersLoading] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [showToken, setShowToken] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
 
   const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
   const isManager = selectedTeam?.role === "manager";
@@ -140,6 +142,13 @@ export function SettingsPage() {
     );
   }
 
+  function copyToken() {
+    if (!session) return;
+    void navigator.clipboard.writeText(session.token);
+    setTokenCopied(true);
+    setTimeout(() => setTokenCopied(false), 1500);
+  }
+
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div>
@@ -152,6 +161,54 @@ export function SettingsPage() {
         <p className="mt-1 text-sm text-zinc-500">
           Signed in as <b>{user?.email}</b> · plan: <b>{user?.plan}</b>
         </p>
+      </section>
+
+      <section className="rounded-2xl border border-zinc-200 p-6">
+        <h2 className="text-sm font-semibold text-zinc-700">Connect the extension</h2>
+        <p className="mt-1 text-sm text-zinc-500">
+          Paste this API token into the extension&apos;s Settings so the sidebar can save prompts to
+          your team library and send suggestion feedback. It only authorises signed requests — no
+          prompt text is synced by entering it (spec §5.7).
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            readOnly
+            value={session?.token ?? ""}
+            type={showToken ? "text" : "password"}
+            className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 font-mono text-xs text-zinc-600"
+          />
+          <button
+            onClick={() => setShowToken((s) => !s)}
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+          >
+            {showToken ? "Hide" : "Show"}
+          </button>
+          <button
+            onClick={copyToken}
+            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+          >
+            {tokenCopied ? "Copied ✓" : "Copy token"}
+          </button>
+        </div>
+        {teams.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs text-zinc-500">
+              Team IDs — paste the one you want to save prompts into:
+            </p>
+            <ul className="mt-2 space-y-1 text-xs">
+              {teams.map((t) => (
+                <li key={t.id} className="flex flex-wrap items-center gap-2">
+                  <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-600">
+                    {t.id}
+                  </code>
+                  <span className="text-zinc-500">
+                    {t.name} ({t.role})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-zinc-200 p-6">

@@ -35,6 +35,12 @@ const BADGES: Array<{
     check: (s) => s.streak_days >= 5,
   },
   {
+    id: "first-week",
+    name: "First Week Challenge",
+    desc: "Score 5 green prompts (≥70) in your first week",
+    check: (s: StatsResponse) => s.green_count >= 5,
+  },
+  {
     id: "team-player",
     name: "Team Player",
     desc: "Share 5 prompts to the team library",
@@ -45,15 +51,20 @@ const BADGES: Array<{
 export function AchievementsPage() {
   const { session } = useAuth();
   const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [weekStats, setWeekStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
-    api
-      .stats(session.token, "30d")
-      .then((res) => {
-        if (!cancelled) setStats(res);
+    // 30d drives the long-term badges; 7d powers the spec §5.8 "first week"
+    // mini-challenge (5 green prompts).
+    Promise.all([api.stats(session.token, "30d"), api.stats(session.token, "7d")])
+      .then(([month, week]) => {
+        if (!cancelled) {
+          setStats(month);
+          setWeekStats(week);
+        }
       })
       .catch(() => {
         if (!cancelled) setStats(null);
@@ -65,6 +76,10 @@ export function AchievementsPage() {
       cancelled = true;
     };
   }, [session?.token]);
+
+  // The first-week badge is judged on the 7-day green count (spec §5.8).
+  const statsFor = (b: (typeof BADGES)[number]): StatsResponse | null =>
+    b.id === "first-week" ? weekStats : stats;
 
   return (
     <div className="flex flex-col gap-6">
@@ -78,7 +93,8 @@ export function AchievementsPage() {
       {!loading && (
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
           {BADGES.map((b) => {
-            const earned = stats ? b.check(stats) : false;
+            const source = statsFor(b);
+            const earned = source ? b.check(source) : false;
             return (
               <div
                 key={b.id}

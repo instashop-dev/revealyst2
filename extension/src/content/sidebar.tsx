@@ -1,7 +1,8 @@
 import { bandFor } from "@revealyst/scoring";
 import { useEffect, useRef, useState } from "react";
 import type { ScoreResult } from "@revealyst/scoring";
-import type { Settings, Suggestion } from "../shared/types.js";
+import type { LocalHistoryEntry, Settings, Suggestion } from "../shared/types.js";
+import { SettingsPanel, type TeamOption } from "./settings-panel.js";
 
 export interface SidebarProps {
   settings: Settings;
@@ -13,13 +14,18 @@ export interface SidebarProps {
   inputMissing: boolean;
   truncated: boolean;
   lastApplied: string | null;
+  /** Thumbs row visibility — spec §5.1: shown after the LLM response appears. */
+  thumbsVisible: boolean;
   onPauseToggle: () => void;
   onApply: (suggestion: Suggestion) => void;
-  onThumbs: (accepted: boolean) => void;
+  onThumbs: (rating: 1 | -1) => void;
   onSaveToLibrary: () => void;
   onOnboardingDone: () => void;
   onCloudSyncToggle: (enabled: boolean) => void;
-  history: ScoreResult[];
+  onSaveSettings: (patch: Partial<Settings>) => void;
+  onClearHistory: () => void;
+  localHistory: LocalHistoryEntry[];
+  loadTeams: (token: string) => Promise<TeamOption[]>;
 }
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -39,6 +45,7 @@ const BAND_COLORS: Record<string, string> = {
 export function Sidebar(props: SidebarProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0 });
@@ -85,6 +92,21 @@ export function Sidebar(props: SidebarProps) {
     );
   }
 
+  if (settingsOpen) {
+    return (
+      <SettingsPanel
+        settings={props.settings}
+        localHistory={props.localHistory}
+        onSave={(patch) => {
+          props.onSaveSettings(patch);
+          setSettingsOpen(false);
+        }}
+        onClearHistory={props.onClearHistory}
+        loadTeams={props.loadTeams}
+      />
+    );
+  }
+
   const score = props.result?.score ?? 0;
   const band = props.result ? bandFor(score) : "yellow";
 
@@ -97,15 +119,24 @@ export function Sidebar(props: SidebarProps) {
             BETA
           </span>
         </div>
-        <button
-          className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
-            props.settings.paused ? "bg-zinc-200 text-zinc-600" : "bg-emerald-600 text-white"
-          }`}
-          onClick={props.onPauseToggle}
-          title={props.settings.paused ? "Resume scoring" : "Pause scoring"}
-        >
-          {props.settings.paused ? "Paused" : "Pause"}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+              props.settings.paused ? "bg-zinc-200 text-zinc-600" : "bg-emerald-600 text-white"
+            }`}
+            onClick={props.onPauseToggle}
+            title={props.settings.paused ? "Resume scoring" : "Pause scoring"}
+          >
+            {props.settings.paused ? "Paused" : "Pause"}
+          </button>
+          <button
+            className="rounded px-1.5 py-1 text-sm hover:bg-zinc-100"
+            onClick={() => setSettingsOpen(true)}
+            title="Settings — token, team, local history"
+          >
+            ⚙️
+          </button>
+        </div>
       </header>
 
       <section className="rounded-xl border border-zinc-200 p-3">
@@ -185,18 +216,29 @@ export function Sidebar(props: SidebarProps) {
       </section>
 
       <footer className="flex items-center justify-between border-t border-zinc-100 pt-2 text-[11px] text-zinc-400">
+        {props.thumbsVisible ? (
+          <div className="flex items-center gap-1">
+            <button
+              className="rounded px-1.5 py-1 hover:bg-zinc-100"
+              onClick={() => props.onThumbs(1)}
+              title="This prompt was helpful"
+            >
+              👍
+            </button>
+            <button
+              className="rounded px-1.5 py-1 hover:bg-zinc-100"
+              onClick={() => props.onThumbs(-1)}
+              title="This prompt needs work"
+            >
+              👎
+            </button>
+          </div>
+        ) : (
+          <span className="text-[10px] text-zinc-300">Rate after the LLM responds</span>
+        )}
         <button
           className="rounded px-1.5 py-1 hover:bg-zinc-100"
-          onClick={() => {
-            props.onThumbs(true);
-          }}
-          title="Suggestions helpful"
-        >
-          👍
-        </button>
-        <button
-          className="rounded px-1.5 py-1 hover:bg-zinc-100"
-          onClick={() => props.onSaveToLibrary()}
+          onClick={props.onSaveToLibrary}
           title="Save to library"
         >
           ⭐
@@ -223,22 +265,6 @@ export function Sidebar(props: SidebarProps) {
           ⧉
         </button>
       </footer>
-
-      {props.history.length > 0 && (
-        <details className="text-[11px] text-zinc-400">
-          <summary className="cursor-pointer">Last scores ({props.history.length})</summary>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {props.history.map((h, i) => (
-              <span
-                key={i}
-                className={`rounded px-1.5 py-0.5 font-mono ${BAND_COLORS[bandFor(h.score)]} text-white`}
-              >
-                {h.score}
-              </span>
-            ))}
-          </div>
-        </details>
-      )}
     </div>
   );
 }
