@@ -24,7 +24,7 @@ export interface WorkerEnv {
   /** AWS secret key for SES (Worker secret). */
   SES_SECRET_ACCESS_KEY?: string;
   VECTORIZE?: VectorizeIndex;
-  /** Hyperdrive proxy for the Supabase pooler; preferred over DATABASE_URL. */
+  /** Hyperdrive proxy for AWS RDS; preferred over DATABASE_URL. */
   HYPERDRIVE?: Hyperdrive;
   /** Test seam: pre-built SqlDb overrides the postgres.js connection. */
   _DB?: SqlDb;

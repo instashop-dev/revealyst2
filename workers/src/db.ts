@@ -1,10 +1,10 @@
 import type { SqlDb } from "@revealyst/db";
 
 /**
- * Client-side cap on a single DB query. Generous on purpose: Supabase
- * free-tier databases pause after inactivity and take 10-30s to wake, and
- * Hyperdrive sockets can go stale �� a single retry (below) covers transient
- * slowness without failing the request.
+ * Client-side cap on a single DB query. Generous on purpose: RDS + Hyperdrive
+ * round-trips can be slow under cold starts, and Hyperdrive sockets can go
+ * stale — a single retry (below) covers transient slowness without failing
+ * the request.
  */
 export const QUERY_TIMEOUT_MS = 15_000;
 
