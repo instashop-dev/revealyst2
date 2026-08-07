@@ -30,8 +30,27 @@ The deploy pipeline runs two smoke layers after every deploy:
   removes its own test rows.
 
 Local: `node e2e/api-smoke.mjs` against the live deploy;
-`node e2e/journey.mjs` against a `wrangler dev` worker with `DEV_MODE=true`
-(see `IMPLEMENTATION_PLAN.md` → How to verify).
+`node e2e/journey.mjs` against a local `wrangler dev` worker with `DEV_MODE=true`.
+
+To run the journey locally, start the worker with the dev launcher (it exports
+the env vars wrangler 4.x needs — Cloudflare auth + the Hyperdrive local
+connection string with `?sslmode=require`):
+
+```bash
+npm run dev:local -w workers          # wrangler dev on 127.0.0.1:8788 (DEV_MODE=true in .dev.vars)
+# in a second shell, with DATABASE_URL exported (workers/.dev.vars):
+node e2e/journey.mjs                  # self-cleaning; removes its test rows
+```
+
+Notes:
+
+- The Hyperdrive local connection string must carry `?sslmode=require` or RDS
+  rejects the plaintext connection (`no pg_hba.conf entry ... no encryption`).
+- The local `OPENAI_API_KEY` must be valid for the suggestion engine to use the
+  Vectorize→LLM pipeline locally; otherwise it transparently falls back to
+  static patterns (logged as `[suggestions] vectorize+llm failed ...`).
+- Journey runs are slow from remote dev machines (each query is a fresh TLS
+  connection to RDS); expect several minutes.
 
 ## Deployment
 

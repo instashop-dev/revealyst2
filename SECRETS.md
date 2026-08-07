@@ -53,8 +53,16 @@ with DNS (MX/TXT) set up for the sending subdomain `e.revealyst.com`.
 
 ```bash
 cp workers/.dev.vars.example workers/.dev.vars   # fill in values
-cd workers && npm run dev                         # wrangler dev
+npm run dev:local -w workers                      # wrangler dev on 127.0.0.1:8788
 ```
+
+`npm run dev:local -w workers` (→ `workers/scripts/dev-local.mjs`) exports the
+vars wrangler 4.x needs from the **process environment** — `CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`
+— then runs `wrangler dev`. The Hyperdrive local connection string must include
+`?sslmode=require` (RDS rejects plaintext); the example file documents this.
+Plain `wrangler dev` from `workers/` works too, but only if those three vars are
+already exported in your shell.
 
 ## Rotation & hygiene
 

@@ -1,15 +1,23 @@
-// Ops diagnostic + cleanup: inspect the Supabase pooler's connection activity
-// and terminate stale backends left by hung worker requests (e.g. pre-fix
-// leaked pools). Reads the git-ignored .dev.vars at the repo root for
-// DATABASE_URL.
+// Ops diagnostic + cleanup: inspect RDS connection activity and terminate
+// stale backends left by hung worker requests (e.g. leaked pools). Reads the
+// git-ignored `workers/.dev.vars` (fallback: root `.dev.vars`) for
+// DATABASE_URL, and forces TLS (RDS rejects plaintext connections).
 // Run: node scripts/clear-stuck-db.mjs
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const varsFile = [path.join(root, "workers", ".dev.vars"), path.join(root, ".dev.vars")].find(
+  existsSync,
+);
+if (!varsFile) {
+  console.error(".dev.vars not found (looked in workers/ and repo root)");
+  process.exit(1);
+}
+console.log(`clear-stuck-db: using vars from ${path.relative(root, varsFile)}`);
 const vars = Object.fromEntries(
-  readFileSync(path.join(root, ".dev.vars"), "utf8")
+  readFileSync(varsFile, "utf8")
     .split("\n")
     .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
     .map((l) => {
@@ -17,11 +25,14 @@ const vars = Object.fromEntries(
       return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
     }),
 );
-const url = vars.DATABASE_URL;
+let url = vars.DATABASE_URL;
 if (!url) {
   console.error("DATABASE_URL missing from .dev.vars");
   process.exit(1);
 }
+// RDS requires TLS; postgres.js honors sslmode=require in the connection
+// string (plaintext is rejected with "no pg_hba.conf entry ... no encryption").
+if (!/sslmode=/.test(url)) url += (url.includes("?") ? "&" : "?") + "sslmode=require";
 
 const { default: postgres } = await import(
   pathToFileURL(path.join(root, "node_modules/postgres/src/index.js")).href
