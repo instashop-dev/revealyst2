@@ -127,7 +127,7 @@ security model, key decisions).
 - Live: `/api/health` 200; dashboard root 200; `/auth/verify` SPA fallback 200;
   `POST /api/auth/magic` 200 (~1s) for existing users
 - **Local dev fixed (PR #19)** — the full-stack journey failed on a fresh
-  machine because miniflare's Hyperdrive emulation pipes *plaintext* to RDS
+  machine because miniflare's Hyperdrive emulation pipes _plaintext_ to RDS
   when the local connection string lacks `?sslmode=require` (RDS rejects it),
   and wrangler 4.x reads Cloudflare auth + the Hyperdrive local string from the
   **process env**, not `.dev.vars`. `npm run dev:local -w workers`
