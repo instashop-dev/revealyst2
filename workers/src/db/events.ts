@@ -55,7 +55,10 @@ export function createEventsRepo(db: SqlDb) {
           event.teamId,
           event.promptHash,
           event.score,
-          JSON.stringify(event.breakdown),
+          // Pass the object (not a string): postgres.js serializes JS objects
+          // to proper jsonb; a string would be stored as a jsonb *string*
+          // value and come back as text, breaking radar/stats reads.
+          event.breakdown,
           event.flags,
           event.llmPlatform,
           event.createdAt ?? null,

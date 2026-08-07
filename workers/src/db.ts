@@ -15,6 +15,21 @@ class QueryTimeoutError extends Error {
   }
 }
 
+/**
+ * Encode a JS string array as a Postgres array literal for TEXT[] params.
+ *
+ * postgres.js with `fetch_types: false` mis-encodes JS array params for
+ * TEXT[] columns (sends a bare comma-joined string, e.g. `a,b` instead of
+ * `{a,b}`), so INSERTs into `flags`/`tags` failed on real Postgres with
+ * "malformed array literal" (pg-mem masked this in tests). We serialize
+ * arrays ourselves — robust and independent of the driver's type catalog.
+ */
+export function pgArrayLiteral(values: string[]): string {
+  const encode = (v: string): string =>
+    /[,"\\{} \t\r\n]|^$/.test(v) ? `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : v;
+  return `{${values.map(encode).join(",")}}`;
+}
+
 function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new QueryTimeoutError(ms)), ms);
@@ -59,9 +74,12 @@ function createPostgresDb(connectionString: string): Promise<RequestDb> {
     const makeSql = () =>
       postgres(connectionString, {
         prepare: false,
-        // fetch_types: false skips the pg_type catalog query postgres.js runs
-        // on every connect; built-in type parsers cover everything we use.
-        fetch_types: false,
+        // fetch_types keeps the pg_type catalog so JSONB columns come back as
+        // parsed objects (not strings) and JS array params serialize to proper
+        // array literals. Disabling it caused real bugs: `team.settings` was a
+        // string, so identifiable mode could never activate, and TEXT[] params
+        // produced "malformed array literal" (pg-mem masked both in tests).
+        fetch_types: true,
         max: 1,
         // Reuse the connection WITHIN the request (multiple queries per
         // route); the per-request lifecycle (closeRequestDb after the
@@ -80,12 +98,15 @@ function createPostgresDb(connectionString: string): Promise<RequestDb> {
       attempt: number,
     ): Promise<{ rows: T[] }> {
       const t0 = Date.now();
+      // JS arrays → Postgres array literals (see pgArrayLiteral); everything
+      // else passes through untouched.
+      const sqlParams: unknown[] = params.map((p) => (Array.isArray(p) ? pgArrayLiteral(p) : p));
       try {
         const rows = await withTimeout(
           () =>
             sql.unsafe<T[]>(
               text,
-              params as never[],
+              sqlParams as never[],
               {
                 simple,
               } as Parameters<typeof sql.unsafe>[2] & { simple: boolean },
@@ -111,8 +132,18 @@ function createPostgresDb(connectionString: string): Promise<RequestDb> {
         } catch {
           // already closed
         }
-        if (!(error instanceof QueryTimeoutError) || attempt >= 2) throw error;
-        // retry once on a fresh connection (covers DB wake-up / stale socket)
+        // Retry on a fresh connection when the failure looks transient:
+        // query timeouts (DB wake-up / stale socket) and connection-dropped
+        // errors ("write CONNECTION_CLOSED …hyperdrive.local" — Hyperdrive
+        // recycles stale sockets). Anything else (SQL errors, auth) fails
+        // fast — retrying those would double-apply writes.
+        const transient =
+          error instanceof QueryTimeoutError ||
+          /CONNECTION_(CLOSED|ENDED)|ECONNREFUSED|ECONNRESET|socket hang up|ETIMEDOUT/i.test(
+            (error as Error).message ?? "",
+          );
+        if (!transient || attempt >= 2) throw error;
+        // retry once on a fresh connection
         sql = makeSql();
         return run(text, params, simple, attempt + 1);
       }
