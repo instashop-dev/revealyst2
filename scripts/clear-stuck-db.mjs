@@ -15,6 +15,7 @@ if (!varsFile) {
   console.error(".dev.vars not found (looked in workers/ and repo root)");
   process.exit(1);
 }
+console.log(`clear-stuck-db: using vars from ${path.relative(root, varsFile)}`);
 const vars = Object.fromEntries(
   readFileSync(varsFile, "utf8")
     .split("\n")
