@@ -20,6 +20,8 @@ export interface ScoreEventPayload {
   llm_platform: string;
   team_id?: string;
   user_anon_id?: string;
+  /** Thumbs up/down for this prompt (-1 | 0 | 1) — spec §5.4 history rating. */
+  rating?: number;
 }
 
 export interface Settings {
@@ -31,6 +33,11 @@ export interface Settings {
   apiBase: string;
   /** Per-platform custom input selectors (spec: "plus any configurable list"). */
   platformSelectors: Record<string, string>;
+  /** Session token copied from the web dashboard Settings — authorises
+   *  save-to-library and suggestion feedback (spec §5.1/§5.6). */
+  apiToken: string;
+  /** Team the user saves library prompts into (spec §5.5 promote-to-library). */
+  teamId: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -38,11 +45,50 @@ export const DEFAULT_SETTINGS: Settings = {
   cloudSync: false,
   apiBase: "https://revealyst-workers.thapi.workers.dev",
   platformSelectors: {},
+  apiToken: "",
+  teamId: "",
 };
 
 export interface OnboardingState {
   completed: boolean;
 }
+
+/** One locally-persisted scored prompt (spec §5.1 "view personal prompt
+ *  history"; snippets never leave the device — privacy-first §5.7). */
+export interface LocalHistoryEntry {
+  prompt: string;
+  score: number;
+  flags: string[];
+  platform: string;
+  rating: number | null;
+  createdAt: string;
+}
+
+/** Client-side static tips (spec §7): shown when the suggestion network
+ *  request fails and no server fallback is reachable. */
+export const CLIENT_TIPS: Suggestion[] = [
+  {
+    id: "add_role",
+    type: "add_role",
+    text: 'Give the AI a role to anchor its expertise, e.g. "Act as a senior copywriter."',
+    preview: "Act as a senior copywriter. ",
+    action: "prepend",
+  },
+  {
+    id: "add_output_format",
+    type: "add_output_format",
+    text: 'Tell the AI exactly how to respond, e.g. "Answer as a bulleted list."',
+    preview: "Answer as a bulleted list. ",
+    action: "append",
+  },
+  {
+    id: "add_context",
+    type: "add_context",
+    text: "Add who it is for, why you need it, and what you already know.",
+    preview: " For context: this is for my team, and I need it to plan next week.",
+    action: "append",
+  },
+];
 
 export const STORAGE_KEYS = {
   settings: "revealyst:settings",
