@@ -4,12 +4,12 @@ compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
 
 # RDS PostgreSQL access from the Worker (postgres.js over TCP).
-# Hyperdrive proxies the Supabase pooler; the Worker connects over
+# Hyperdrive proxies the AWS RDS instance; the Worker connects over
 # Cloudflare's network (no direct TCP egress needed). If the binding is
 # removed, db.ts falls back to DATABASE_URL.
 [[hyperdrive]]
 binding = "HYPERDRIVE"
-id = "b5c9c163223546739c6a51bf3cf365f7"
+id = "1ed0eec907c544189c090fb940c111c9"
 
 [[vectorize]]
 binding = "VECTORIZE"
