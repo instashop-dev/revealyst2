@@ -6,9 +6,24 @@ OPENAI_API_KEY=
 
 # Cloudflare
 CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=
 
-# RDS PostgreSQL connection string (postgres://user:pass@host:5432/revealyst)
+# RDS PostgreSQL connection string (postgres://user:pass@host:5432/revealyst).
+# Use the same instance the deployed Worker talks to via Hyperdrive
+# (revealyst-rds) so local dev exercises the real database.
 DATABASE_URL=
+
+# Local Hyperdrive emulation (wrangler dev only; NOT read from .dev.vars —
+# wrangler 4.x expects it as a real process env var, which the `dev:local`
+# script (`workers/scripts/dev-local.mjs`) exports for you).
+#
+# RDS requires TLS. Miniflare's Hyperdrive emulation reads `sslmode` from this
+# string and pipes plaintext to the DB when it is absent — without
+# `?sslmode=require` every DB request fails with
+# `no pg_hba.conf entry for host ... no encryption`.
+#
+#   CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="${DATABASE_URL}?sslmode=require"
+CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=
 
 # Vectorize
 VECTORIZE_NAMESPACE=prompt-patterns
@@ -16,8 +31,17 @@ VECTORIZE_NAMESPACE=prompt-patterns
 # JWT signing secret for magic-link auth (generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 JWT_SECRET=
 
-# Base URL of the web app (for magic-link redirects)
-APP_URL=http://localhost:8788
+# Base URL of the web app (for magic-link redirects). Local dev with
+# DEV_MODE=true returns magic links directly in the API response, so any value
+# works; use http://127.0.0.1:8788 to match `npm run dev:local -w workers`.
+APP_URL=http://127.0.0.1:8788
+
+# Local dev only: DEV_MODE returns magic links (and team-invite links) in the
+# API response body instead of emailing them; RATE_LIMIT_DISABLED skips the
+# per-isolate rate limiter so e2e suites can run unthrottled. Keep both
+# `false` unless you are running the journey e2e or a long test session.
+DEV_MODE=true
+RATE_LIMIT_DISABLED=true
 
 # AWS SES — transactional email for magic links (optional for local dev;
 # required in production). The access keys are Worker secrets.

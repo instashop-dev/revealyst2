@@ -153,9 +153,11 @@ security model, key decisions).
 npm ci && npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build
 node e2e/api-smoke.mjs                                          # live smoke vs deployed endpoints
 # full-stack journey (local worker + real RDS/Vectorize/OpenAI):
-#   export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$DATABASE_URL?sslmode=require"
-#   (cd workers && npx wrangler dev --port 8788 --ip 127.0.0.1)  # with DEV_MODE=true in .dev.vars
-#   DATABASE_URL=$DATABASE_URL node e2e/journey.mjs
+npm run dev:local -w workers                                   # starts wrangler dev on 127.0.0.1:8788
+#   (exports CLOUDFLARE_API_TOKEN/ACCOUNT_ID + the Hyperdrive local string
+#    from workers/.dev.vars; that string must end in ?sslmode=require)
+# second shell, DATABASE_URL exported from workers/.dev.vars:
+DATABASE_URL=$DATABASE_URL node e2e/journey.mjs
 curl -s https://revealyst-workers.thapi.workers.dev/api/health  # {"status":"ok",...}
 curl -s -X POST https://revealyst-workers.thapi.workers.dev/api/auth/magic \
   -H 'Content-Type: application/json' -d '{"email":"you@example.com"}'  # → {"message":"link sent"} (uniform 200; delivery is confirmed in SES console)

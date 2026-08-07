@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "dev": "wrangler dev",
+    "dev:local": "node scripts/dev-local.mjs",
     "clean": "rm -rf dist"
   },
   "dependencies": {

@@ -60,7 +60,10 @@ export async function getSuggestions(flags: string[], env: WorkerEnv): Promise<S
       generateSuggestions(patterns, deficiencies, env.OPENAI_API_KEY),
     );
     return { suggestions, source: "vectorize+llm" };
-  } catch {
+  } catch (error) {
+    console.error(
+      `[suggestions] vectorize+llm failed, using static fallback: ${(error as Error).message ?? error}`,
+    );
     const suggestions = selectStaticPatterns(deficiencies).map(patternToSuggestion);
     return { suggestions: suggestions.length > 0 ? suggestions : GENERIC_TIPS, source: "static" };
   }
