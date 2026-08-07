@@ -459,6 +459,34 @@ describe("library governance (§5.6)", () => {
     expect(vBody.versions.find((v) => v.version === 3)?.is_standard).toBe(true);
   });
 
+  it("member text-edits preserve governance flags (cannot strip Team Standard)", async () => {
+    const versions = await app.request(
+      `/api/library/${promptId}/versions`,
+      { headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    const vBody = (await versions.json()) as {
+      versions: Array<{ id: string; version: number; is_standard: boolean }>;
+    };
+    const head = vBody.versions.sort((a, b) => b.version - a.version)[0]!;
+    expect(head.is_standard).toBe(true);
+
+    const res = await app.request(
+      "/api/library/" + head.id,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${memberToken}` },
+        body: JSON.stringify({ prompt_text: "Write a short cold email — v4 by a member." }),
+      },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const card = (await res.json()) as { version: number; is_standard: boolean };
+    // A member may edit the text, but the new version inherits Team Standard.
+    expect(card.version).toBe(head.version + 1);
+    expect(card.is_standard).toBe(true);
+  });
+
   it("lists with sort + returns governance fields", async () => {
     const res = await app.request(
       `/api/library?team_id=${teamId}&sort=highest_score`,

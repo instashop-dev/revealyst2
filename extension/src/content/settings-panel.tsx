@@ -45,7 +45,7 @@ export function SettingsPanel({
         })
         .catch(() => setTeamsStatus("Could not load teams — check your token."));
     }
-  }, [settings.apiToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [settings.apiToken]);
 
   async function refreshTeams() {
     if (!apiToken.trim()) {

@@ -40,6 +40,15 @@ async function main(): Promise<void> {
 
 async function mainUnsafe(): Promise<void> {
   const settings = await getSettings();
+  // Stable per-install anonymous id (spec §5.5 pseudonyms): groups team trends
+  // before sign-in; never links to an identity. Generated once, persisted.
+  if (!settings.anonId) {
+    const anonId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `anon-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    Object.assign(settings, await setSettings({ anonId }));
+  }
   const platform = detectPlatform(window.location.href, settings.platformSelectors);
   if (!platform) return; // unsupported page — do nothing
   const def: PlatformDef = platform;
@@ -136,6 +145,29 @@ async function mainUnsafe(): Promise<void> {
   });
   responseObserver.observe(document.body, { childList: true, subtree: true });
 
+  // ---- event sync (attributed when the user has connected their account) ---
+  function sendEvent(payload: ScoreEventPayload): void {
+    void (async () => {
+      const attempt = (body: ScoreEventPayload, withTeam: boolean) =>
+        chrome.runtime.sendMessage({
+          type: "LOG_EVENT",
+          apiBase: settings.apiBase,
+          token: settings.apiToken || undefined,
+          payload: {
+            ...body,
+            user_anon_id: settings.anonId,
+            ...(withTeam && settings.teamId ? { team_id: settings.teamId } : {}),
+          },
+        });
+      const res = (await attempt(payload, true)) as { status?: number } | undefined;
+      // Team attribution is membership-checked; if the user left the team,
+      // drop it and still record the event on the personal dashboard.
+      if (res?.status === 403 && settings.teamId) {
+        await attempt(payload, false);
+      }
+    })().catch(() => undefined);
+  }
+
   // ---- scoring + suggestions ---------------------------------------------
   function onScored(update: { result: ScoreResult; hash: string; prompt: string }): void {
     const flagsChanged =
@@ -156,14 +188,13 @@ async function mainUnsafe(): Promise<void> {
     ].slice(0, 100);
     void appendLocalHistory(localHistory[0]!);
     if (settings.cloudSync) {
-      const payload: ScoreEventPayload = {
+      sendEvent({
         prompt_hash: update.hash,
         score: update.result.score,
         flags: update.result.flags,
         breakdown: update.result.breakdown,
         llm_platform: def.id,
-      };
-      void chrome.runtime.sendMessage({ type: "LOG_EVENT", apiBase: settings.apiBase, payload });
+      });
     }
     if (flagsChanged) {
       // Only refetch suggestions when the deficiencies changed; otherwise keep
@@ -257,17 +288,14 @@ async function mainUnsafe(): Promise<void> {
     });
     // Cloud event: only scores/flags/hash/rating leave the device (privacy §5.7).
     if (settings.cloudSync) {
-      const payload: ScoreEventPayload = {
+      sendEvent({
         prompt_hash: lastHash,
         score: result?.score ?? 0,
         flags: result?.flags ?? [],
         breakdown: result?.breakdown ?? {},
         llm_platform: def.id,
         rating,
-      };
-      void chrome.runtime
-        .sendMessage({ type: "LOG_EVENT", apiBase: settings.apiBase, payload })
-        .catch(() => undefined);
+      });
     }
   }
 
@@ -286,7 +314,7 @@ async function mainUnsafe(): Promise<void> {
       return;
     }
     try {
-      await chrome.runtime.sendMessage({
+      const res = (await chrome.runtime.sendMessage({
         type: "SAVE_LIBRARY",
         apiBase: settings.apiBase,
         token: settings.apiToken,
@@ -297,13 +325,20 @@ async function mainUnsafe(): Promise<void> {
           tags: [def.id],
           score: result?.score ?? 0,
         },
-      });
+      })) as { error?: string; status?: number } | { id: string };
+      // sendMessage resolves with {error} on failure (service worker catch).
+      if (res && "error" in res && res.error) {
+        const err = new Error(res.error) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
       lastApplied = "Saved to library ⭐";
       rerender();
     } catch (error) {
+      const status = (error as { status?: number }).status;
       const message = error instanceof Error ? error.message : "Save failed";
       lastApplied =
-        message.includes("Unauthorized") || message.includes("401")
+        status === 401 || message.includes("Unauthorized")
           ? "Session expired — refresh your token in Settings"
           : `Save failed — ${message}`;
       rerender();

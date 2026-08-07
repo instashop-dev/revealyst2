@@ -79,6 +79,60 @@ describe("background API client", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("attributes events to the signed-in user via the session token (spec §5.4)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ success: true })));
+    await logEvent(
+      BASE,
+      {
+        prompt_hash: "abc123",
+        score: 72,
+        flags: [],
+        breakdown: {
+          specificity: 80,
+          context: 60,
+          role_clarity: 90,
+          output_format: 80,
+          examples_included: 40,
+        },
+        llm_platform: "chatgpt",
+        team_id: "team-1",
+        user_anon_id: "anon-1",
+        rating: 1,
+      },
+      "token-abc",
+    );
+    const [, init] = vi.mocked(fetch).mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer token-abc");
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      team_id: "team-1",
+      user_anon_id: "anon-1",
+      rating: 1,
+    });
+  });
+
+  it("throws a status-carrying error on a 403 team attribution so callers can retry", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "forbidden" }, 403)));
+    try {
+      await logEvent(BASE, {
+        prompt_hash: "abc123",
+        score: 50,
+        flags: [],
+        breakdown: {
+          specificity: 80,
+          context: 60,
+          role_clarity: 90,
+          output_format: 80,
+          examples_included: 40,
+        },
+        llm_platform: "chatgpt",
+        team_id: "team-1",
+      });
+      expect.unreachable("logEvent should throw on 403");
+    } catch (err) {
+      expect((err as { status: number }).status).toBe(403);
+    }
+  });
+
   it("sends the session token with save-to-library (spec §5.6)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ id: "p-1" }, 201)));
     const res = await saveToLibrary(

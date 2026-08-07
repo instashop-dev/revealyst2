@@ -15,7 +15,7 @@ export type ExtensionMessage =
       promptHash?: string;
       apiBase: string;
     }
-  | { type: "LOG_EVENT"; payload: Parameters<typeof logEvent>[1]; apiBase: string }
+  | { type: "LOG_EVENT"; payload: Parameters<typeof logEvent>[1]; token?: string; apiBase: string }
   | {
       type: "SAVE_LIBRARY";
       payload: Parameters<typeof saveToLibrary>[1];
@@ -46,7 +46,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
         );
         break;
       case "LOG_EVENT":
-        await logEvent(message.apiBase, message.payload);
+        await logEvent(message.apiBase, message.payload, message.token);
         sendResponse({ success: true });
         break;
       case "SAVE_LIBRARY":
@@ -70,7 +70,15 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
       default:
         sendResponse(undefined);
     }
-  })().catch((error: unknown) => sendResponse({ error: String(error) }));
+  })().catch((error: unknown) =>
+    sendResponse({
+      error: String(error),
+      status:
+        typeof (error as { status?: unknown })?.status === "number"
+          ? (error as { status: number }).status
+          : undefined,
+    }),
+  );
   return true; // async response
 });
 

@@ -110,7 +110,9 @@ export function createLibraryRepo(db: SqlDb) {
     /**
      * Create a new version of a prompt (spec §5.6: each edit preserves the
      * original by linking parent_id and bumping version). The prompt body is
-     * re-encrypted with the current key.
+     * re-encrypted with the current key. Governance flags (notes, Team
+     * Standard) are carried from the parent so a member's text edit cannot
+     * strip them; managers can still change them explicitly afterwards.
      */
     async createVersion(
       parent: LibraryPromptRow,
@@ -124,8 +126,8 @@ export function createLibraryRepo(db: SqlDb) {
       },
     ): Promise<LibraryPromptRow> {
       const { rows } = await db.query<LibraryPromptRow>(
-        `INSERT INTO library_prompts (team_id, title, prompt_text_encrypted, prompt_hash, tags, created_by, score, version, parent_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        `INSERT INTO library_prompts (team_id, title, prompt_text_encrypted, prompt_hash, tags, created_by, score, version, parent_id, notes, is_standard)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
         [
           parent.team_id,
           body.title,
@@ -136,6 +138,8 @@ export function createLibraryRepo(db: SqlDb) {
           body.score,
           parent.version + 1,
           parent.id,
+          parent.notes,
+          parent.is_standard,
         ],
       );
       const row = rows[0];

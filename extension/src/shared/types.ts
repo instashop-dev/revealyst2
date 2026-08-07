@@ -38,6 +38,9 @@ export interface Settings {
   apiToken: string;
   /** Team the user saves library prompts into (spec §5.5 promote-to-library). */
   teamId: string;
+  /** Stable per-install anonymous id — groups team trends before sign-in
+   *  while keeping the identity private (spec §5.5 pseudonyms). */
+  anonId: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -47,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   platformSelectors: {},
   apiToken: "",
   teamId: "",
+  anonId: "",
 };
 
 export interface OnboardingState {

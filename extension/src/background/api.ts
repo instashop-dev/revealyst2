@@ -1,11 +1,15 @@
 import type { ScoreEventPayload, SuggestionResponse } from "../shared/types.js";
 import { sha256Hex } from "../lib/hash.js";
 
-/**
- * Typed client for the Revealyst API, called from the service worker
- * (extension origin — no CORS constraints). Failures throw; callers decide
- * whether to fall back (suggestions fall back client-side per spec §7).
- */
+/** Error carrying the HTTP status so callers can branch (e.g. retry without team). */
+export class ApiHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Promise<Response> {
   let lastError: unknown;
@@ -40,13 +44,20 @@ export async function fetchSuggestions(
 }
 
 /** Log an anonymised prompt event (only hashes/scores leave the device). */
-export async function logEvent(apiBase: string, payload: ScoreEventPayload): Promise<void> {
+export async function logEvent(
+  apiBase: string,
+  payload: ScoreEventPayload,
+  token?: string,
+): Promise<void> {
   const res = await fetchWithRetry(`${apiBase}/api/event`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`event failed: ${res.status}`);
+  if (!res.ok) throw new ApiHttpError(res.status, `event failed: ${res.status}`);
 }
 
 /** Save a prompt to the team library (encrypted at rest on the server). */
