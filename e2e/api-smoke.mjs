@@ -65,7 +65,9 @@ console.log(`\nRevealyst live smoke — API: ${API} | Web: ${WEB}\n`);
 
 // --- API: health + OpenAPI ------------------------------------------------
 await expectStatus("GET /api/health", `${API}/api/health`, {}, 200);
+await expectStatus("GET /api/health?db=1", `${API}/api/health?db=1`, {}, 200);
 await expectStatus("GET /api/openapi.json", `${API}/api/openapi.json`, {}, 200);
+await expectStatus("GET /api/docs", `${API}/api/docs`, {}, 200);
 
 // --- API: auth shape (no credentials needed) --------------------------------
 await expectStatus("GET /api/auth/me (no token → 401)", `${API}/api/auth/me`, {}, 401);
@@ -88,6 +90,116 @@ await expectStatus(
     body: JSON.stringify({ token: "garbage-token" }),
   },
   401,
+);
+
+// --- API: authenticated endpoints require a session --------------------------
+// Every data endpoint must 401 without a Bearer session token (spec §6.4:
+// "All endpoints authenticate via a JWT from the magic link flow").
+for (const [label, method, path] of [
+  ["GET /api/teams", "GET", "/api/teams"],
+  ["GET /api/history", "GET", "/api/history"],
+  ["GET /api/stats", "GET", "/api/stats"],
+  ["GET /api/library", "GET", "/api/library"],
+  ["GET /api/team/dashboard", "GET", "/api/team/dashboard"],
+  ["POST /api/team", "POST", "/api/team"],
+  ["POST /api/library", "POST", "/api/library"],
+  ["POST /api/feedback", "POST", "/api/feedback"],
+]) {
+  await expectStatus(
+    `${label} (no token → 401)`,
+    `${API}${path}`,
+    method === "GET"
+      ? {}
+      : {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "x" }),
+        },
+    401,
+  );
+}
+
+// --- API: suggestion engine (spec §5.3) --------------------------------------
+// Exercises the deployed Vectorize→LLM pipeline (falls back to static patterns
+// if upstream is unavailable — either way the response shape must hold).
+const sugRes = await expectStatus(
+  "POST /api/suggestion (real flags)",
+  `${API}/api/suggestion`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flags: ["missing_output_format", "vague_context"] }),
+  },
+  200,
+);
+if (sugRes) {
+  const body = await sugRes.json().catch(() => ({}));
+  const ok =
+    Array.isArray(body.suggestions) &&
+    body.suggestions.every(
+      (s) =>
+        typeof s.id === "string" &&
+        typeof s.text === "string" &&
+        typeof s.preview === "string" &&
+        ["prepend", "append", "insert"].includes(s.action),
+    ) &&
+    ["vectorize+llm", "static"].includes(body.source);
+  if (ok) {
+    pass("suggestion shape", `${body.suggestions.length} suggestions, source=${body.source}`);
+  } else {
+    fail("suggestion shape", `unexpected body: ${JSON.stringify(body).slice(0, 300)}`);
+  }
+}
+
+await expectStatus(
+  "POST /api/suggestion (bad body → 400)",
+  `${API}/api/suggestion`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flags: [42] }),
+  },
+  400,
+);
+
+// --- API: event validation (spec §5.7) ---------------------------------------
+// Anonymous events are allowed by design (local-first scoring, hashed prompt
+// only); team attribution requires a session (401) and membership (403).
+const ANON_EVENT = {
+  prompt_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  score: 72,
+  flags: ["missing_output_format"],
+  llm_platform: "chatgpt",
+};
+await expectStatus(
+  "POST /api/event (anonymous, valid → 200)",
+  `${API}/api/event`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(ANON_EVENT),
+  },
+  200,
+);
+await expectStatus(
+  "POST /api/event (team_id without session → 401)",
+  `${API}/api/event`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...ANON_EVENT, team_id: "00000000-0000-0000-0000-000000000000" }),
+  },
+  401,
+);
+await expectStatus(
+  "POST /api/event (bad body → 400)",
+  `${API}/api/event`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ score: 50 }),
+  },
+  400,
 );
 
 // --- API: magic link (SES email delivery) ------------------------------------

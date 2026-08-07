@@ -26,25 +26,25 @@ team analytics, and a Cloudflare-hosted API + Postgres backend.
               └───────┬─────────┬──────┘
                       │         │
         Hyperdrive    │         │ Vectorize
-        (Supabase     │         │ (prompt-patterns, ~5,000 vectors)
-        pooler,       ▼         ▼
-        PostgreSQL)   ┌─────────────────────┐
-        + migrations  │ OpenAI: embeddings  │
-        (db/)         │ + gpt-4o-mini       │
+        (AWS RDS,     │         │ (prompt-patterns, ~5,000 vectors)
+        PostgreSQL)   ▼         ▼
+        + migrations  ┌─────────────────────┐
+        (db/)         │ OpenAI: embeddings  │
+                      │ + gpt-4o-mini       │
                       └─────────────────────┘
 ```
 
 ## Components
 
-| Layer            | Where              | Stack                                                                  |
-| ---------------- | ------------------ | ---------------------------------------------------------------------- |
-| Scoring engine   | `packages/scoring` | Pure TS; rule-based + ONNX adapter with fallback; synchronous, <200 ms |
-| Chrome extension | `extension/`       | MV3, Vite/CRXJS, React + Tailwind sidebar (300px, shadow DOM)          |
-| Web dashboard    | `web/`             | React + Vite, Cloudflare Pages (`revealyst-web.pages.dev`)             |
-| API              | `workers/`         | Hono + zod-openapi on Cloudflare Workers                               |
-| Database         | `db/`              | Supabase Postgres via Cloudflare **Hyperdrive** (pooler); postgres.js  |
-| Search           | `vectorize/`       | Cloudflare Vectorize `prompt-patterns` namespace + seed scripts        |
-| ML assets        | `ml/`              | ONNX export notes, model registry (see `docs/ml-notes.md`)             |
+| Layer            | Where              | Stack                                                                           |
+| ---------------- | ------------------ | ------------------------------------------------------------------------------- |
+| Scoring engine   | `packages/scoring` | Pure TS; rule-based + ONNX adapter with fallback; synchronous, <200 ms          |
+| Chrome extension | `extension/`       | MV3, Vite/CRXJS, React + Tailwind sidebar (300px, shadow DOM)                   |
+| Web dashboard    | `web/`             | React + Vite, Cloudflare Pages (`revealyst-web.pages.dev`)                      |
+| API              | `workers/`         | Hono + zod-openapi on Cloudflare Workers                                        |
+| Database         | `db/`              | AWS RDS PostgreSQL via Cloudflare **Hyperdrive** (`revealyst-rds`); postgres.js |
+| Search           | `vectorize/`       | Cloudflare Vectorize `prompt-patterns` namespace + seed scripts                 |
+| ML assets        | `ml/`              | ONNX export notes, model registry (see `docs/ml-notes.md`)                      |
 
 ## Data flows
 

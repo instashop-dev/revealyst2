@@ -19,18 +19,29 @@ curl -sf -o /dev/null -w "%{http_code}\n" https://revealyst-web.pages.dev/  # 20
 node e2e/api-smoke.mjs                                                    # full live smoke
 ```
 
-The deploy pipeline runs the smoke (`node e2e/api-smoke.mjs`) after every
-deploy in the `smoke` job.
+The deploy pipeline runs two smoke layers after every deploy:
+
+- `smoke` — `node e2e/api-smoke.mjs`: public surface of the live API + web
+  dashboard (health, OpenAPI, auth shape, suggestion engine, session-auth
+  boundaries, magic link, SPA fallback).
+- `journey` — `node e2e/journey.mjs`: full authenticated journey against a
+  local `wrangler dev` worker wired to the real RDS/Vectorize/OpenAI
+  (magic-link auth → events → stats → team lifecycle → library), then
+  removes its own test rows.
+
+Local: `node e2e/api-smoke.mjs` against the live deploy;
+`node e2e/journey.mjs` against a `wrangler dev` worker with `DEV_MODE=true`
+(see `IMPLEMENTATION_PLAN.md` → How to verify).
 
 ## Deployment
 
 Merges to `main` trigger `.github/workflows/deploy.yml` (jobs, gated on
 secrets): `gate` → `vectorize` → `workers` (deploy + `wrangler secret put`) →
-`rds` (migrations + Hyperdrive ensure) → `pages` → `smoke`.
+`rds` (migrations + Hyperdrive ensure) → `pages` → `smoke` → `journey`.
 
 - Deploys are gated on secret presence; missing secrets skip their job.
-- `DATABASE_URL` is user-provisioned (Supabase pooler) and proxied through
-  the Hyperdrive config `revealyst-pooler` (id pinned in
+- `DATABASE_URL` is user-provisioned (AWS RDS) and proxied through
+  the Hyperdrive config `revealyst-rds` (id pinned in
   `workers/wrangler.toml`).
 - CI runs typecheck / lint / format / test / build on every PR and push
   (`.github/workflows/ci.yml`).
@@ -89,34 +100,34 @@ GitHub secrets include `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
    anti-oracle) — verify delivery in the SES console.
 5. **GitHub runners lack IPv6 egress** — migration/deploy steps force IPv4
    resolution for the DB host; do not "fix" by switching back to IPv6-first.
-6. **Hyperdrive**: the live config is `revealyst-pooler-2` (id pinned in
-   `wrangler.toml`; the stale `revealyst-neon` and `revealyst-pooler` configs
-   are deleted by the deploy pipeline). **Refresh note**: on 2026-08-06 the
-   `revealyst-pooler` config's origin connections went stale (intermittent
-   10s+ hangs on every query, pooler healthy when hit directly) — a fresh
+6. **Hyperdrive**: the live config is `revealyst-rds` (id pinned in
+   `wrangler.toml`; the stale `revealyst-neon`, `revealyst-pooler` and
+   `revealyst-pooler-2` configs are deleted by the deploy pipeline).
+   **Refresh note**: on 2026-08-06 the old `revealyst-pooler` config's origin
+   connections went stale (intermittent 10s+ hangs on every query) — a fresh
    config + per-request connections resolved it. If auth hangs recur,
-   `npx wrangler hyperdrive update <id> --connection-string="$DATABASE_URL"`
-   or recreate the config.
+   `npx wrangler hyperdrive update revealyst-rds --connection-string="$DATABASE_URL"`
+   or recreate the config (and repin the id in `wrangler.toml`).
 7. **DB connection model**: per-request connections (Cloudflare forbids
    socket I/O shared across requests — a pooled driver intermittently errors
    "Cannot perform I/O on behalf of a different request"). Each request opens
    one connection, closed by middleware after the response. Every query has a
    15s client-side timeout with ONE retry on a fresh connection — covers
-   Supabase free-tier database pause/wake (10-30s) and stale sockets. On
+   Supabase-era free-tier database pause/wake (10-30s) and stale sockets. On
    timeout the pool is recycled.
 8. **Static suggestion fallback** — if OpenAI or Vectorize is down, the API
    degrades to deterministic static patterns (`source: "static"`), never 5xx.
 
 ## Troubleshooting
 
-| Symptom                                           | Likely cause / action                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /api/auth/magic` hangs or 500s on new users | (fixed) — see the 2026-08-06 incident: stale Hyperdrive origin pool + cross-request socket sharing + Supabase free-tier pause/wake. Current design: per-request connections, 15s query timeout + one retry, fresh `revealyst-pooler-2` config. If it recurs: check `[db] QUERY TIMED OUT` logs, `curl /api/health?db=1`, verify the pooler is awake (`SELECT 1` from a client), and refresh the Hyperdrive config. |
-| Magic link email never arrives                    | SES sandbox recipient verification; identity `revealyst.com` / subdomain `e.revealyst.com` DNS (MX/TXT); check SES console + `[auth] magic link email send failed:` log.                                                                                                                                                                                                                                           |
-| Link rejected at verify (`401`)                   | Token consumed (single-use — request a new link), expired (>15 min), or jti insert failed (DB).                                                                                                                                                                                                                                                                                                                    |
-| Suggestions return `source: "static"`             | Upstream (OpenAI/Vectorize) unavailable or rate limited — transient by design.                                                                                                                                                                                                                                                                                                                                     |
-| Deploy `rds` job fails on migration               | IPv4 resolution of DB host (see quirk 5); TLS/CA of pooler.                                                                                                                                                                                                                                                                                                                                                        |
-| 429s on magic                                     | Per-IP limiter (5/min) or Cloudflare WAF rule — slow down / wait a minute.                                                                                                                                                                                                                                                                                                                                         |
+| Symptom                                           | Likely cause / action                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/auth/magic` hangs or 500s on new users | (fixed) — see the 2026-08-06 incident: stale Hyperdrive origin pool + cross-request socket sharing + DB pause/wake (Supabase era). Current design: per-request connections, 15s query timeout + one retry (also on `CONNECTION_CLOSED`), fresh `revealyst-rds` config. If it recurs: check `[db] QUERY TIMED OUT` logs, `curl /api/health?db=1`, verify the DB is reachable (`SELECT 1` from a client), and refresh the Hyperdrive config. |
+| Magic link email never arrives                    | SES sandbox recipient verification; identity `revealyst.com` / subdomain `e.revealyst.com` DNS (MX/TXT); check SES console + `[auth] magic link email send failed:` log.                                                                                                                                                                                                                                                                   |
+| Link rejected at verify (`401`)                   | Token consumed (single-use — request a new link), expired (>15 min), or jti insert failed (DB).                                                                                                                                                                                                                                                                                                                                            |
+| Suggestions return `source: "static"`             | Upstream (OpenAI/Vectorize) unavailable or rate limited — transient by design.                                                                                                                                                                                                                                                                                                                                                             |
+| Deploy `rds` job fails on migration               | IPv4 resolution of DB host (see quirk 5); TLS/CA of RDS.                                                                                                                                                                                                                                                                                                                                                                                   |
+| 429s on magic                                     | Per-IP limiter (5/min) or Cloudflare WAF rule — slow down / wait a minute.                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## Operational procedures
 
@@ -126,5 +137,5 @@ GitHub secrets include `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
   during maintenance; users re-auth via magic link.
 - **Rotate SES keys**: update `AWS_SES_*` GitHub secrets, then the next
   deploy re-puts the Worker secrets.
-- **DB backup**: Supabase-managed; verify scheduled backups in the Supabase
-  dashboard.
+- **DB backup**: AWS RDS automated backups (7-day retention); verify in the
+  RDS console.
