@@ -410,6 +410,55 @@ describe("library governance (§5.6)", () => {
     expect(card.notes).toContain("weekly outreach");
   });
 
+  it("carries manager notes/standard onto a text-edit version (spec §5.6)", async () => {
+    // Patch the current head of the chain (the newest version), so the new
+    // version bumps to 3.
+    const before = await app.request(
+      `/api/library/${promptId}/versions`,
+      { headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    const beforeBody = (await before.json()) as {
+      versions: Array<{ id: string; version: number }>;
+    };
+    const head = beforeBody.versions.sort((a, b) => b.version - a.version)[0]!;
+
+    const res = await app.request(
+      "/api/library/" + head.id,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${managerToken}` },
+        body: JSON.stringify({
+          prompt_text: "Write a short cold email — with bullet points.",
+          notes: "Keep this for Q3.",
+          is_standard: true,
+        }),
+      },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const card = (await res.json()) as {
+      version: number;
+      is_standard: boolean;
+      notes: string;
+    };
+    expect(card.version).toBe(head.version + 1);
+    expect(card.is_standard).toBe(true);
+    expect(card.notes).toContain("Q3");
+
+    const versions = await app.request(
+      `/api/library/${promptId}/versions`,
+      { headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    const vBody = (await versions.json()) as {
+      versions: Array<{ version: number; is_standard: boolean }>;
+    };
+    // The new version is the head of the chain and keeps its governance flags.
+    expect(vBody.versions.map((v) => v.version).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    expect(vBody.versions.find((v) => v.version === 3)?.is_standard).toBe(true);
+  });
+
   it("lists with sort + returns governance fields", async () => {
     const res = await app.request(
       `/api/library?team_id=${teamId}&sort=highest_score`,

@@ -33,6 +33,8 @@ export function LibraryPage() {
   const [editTags, setEditTags] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editStandard, setEditStandard] = useState(false);
+  const [editPromptText, setEditPromptText] = useState("");
+  const [originalPromptText, setOriginalPromptText] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [newPromptText, setNewPromptText] = useState("");
   const [newTitle, setNewTitle] = useState("");
@@ -110,20 +112,33 @@ export function LibraryPage() {
     }
   }
 
-  function startEdit(card: LibraryCard) {
+  async function startEdit(card: LibraryCard) {
     setEditingId(card.id);
     setEditTitle(card.title ?? "");
     setEditTags(card.tags.join(", "));
     setEditNotes(card.notes ?? "");
     setEditStandard(card.is_standard);
     setEditError(null);
+    try {
+      const detail = await api.libraryGet(session!.token, card.id);
+      setEditPromptText(detail.prompt_text);
+      setOriginalPromptText(detail.prompt_text);
+    } catch {
+      setEditPromptText("");
+      setOriginalPromptText("");
+    }
   }
 
   async function saveEdit() {
     if (!session || !editingId) return;
-    const patch = isManager
+    const patch: Parameters<typeof api.libraryPatch>[2] = isManager
       ? { notes: editNotes || null, is_standard: editStandard }
       : { title: editTitle || undefined, tags: parseTags(editTags) };
+    // Editing the prompt body creates a new version (spec §5.6) — only send
+    // the body when it actually changed, so metadata edits don't fork versions.
+    if (editPromptText !== originalPromptText && editPromptText.trim()) {
+      patch.prompt_text = editPromptText;
+    }
     try {
       await api.libraryPatch(session.token, editingId, patch);
       setEditingId(null);
@@ -323,6 +338,15 @@ export function LibraryPage() {
 
               {editingId === card.id && (
                 <div className="mt-3 flex flex-col gap-2 rounded-lg bg-zinc-50 p-3 text-sm">
+                  <label className="flex flex-col gap-1">
+                    Prompt text (edits create a new version, preserving this one)
+                    <textarea
+                      value={editPromptText}
+                      onChange={(e) => setEditPromptText(e.target.value)}
+                      rows={4}
+                      className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                    />
+                  </label>
                   {isManager ? (
                     <>
                       <label className="flex flex-col gap-1">
