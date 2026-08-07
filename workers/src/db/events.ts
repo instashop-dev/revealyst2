@@ -11,6 +11,8 @@ export interface NewPromptEvent {
   breakdown: Record<string, number>;
   flags: string[];
   llmPlatform: string | null;
+  /** Thumbs up/down for this prompt (-1 | 0 | 1). Null = not rated. */
+  rating?: number | null;
   /** Optional explicit timestamp (tests). Defaults to now(). */
   createdAt?: string;
 }
@@ -47,8 +49,8 @@ export function createEventsRepo(db: SqlDb) {
   return {
     async insert(event: NewPromptEvent): Promise<void> {
       await db.query(
-        `INSERT INTO prompt_events (user_id, user_anon_id, team_id, prompt_hash, score, breakdown, flags, llm_platform, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, now()))`,
+        `INSERT INTO prompt_events (user_id, user_anon_id, team_id, prompt_hash, score, breakdown, flags, llm_platform, rating, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, now()))`,
         [
           event.userId,
           event.userAnonId,
@@ -61,6 +63,7 @@ export function createEventsRepo(db: SqlDb) {
           event.breakdown,
           event.flags,
           event.llmPlatform,
+          event.rating ?? null,
           event.createdAt ?? null,
         ],
       );

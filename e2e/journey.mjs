@@ -165,6 +165,7 @@ step("2. Events, history, stats, feedback");
         examples_included: 10,
       },
       llm_platform: "chatgpt",
+      rating: 1,
     },
   });
   expect(
@@ -178,8 +179,9 @@ step("2. Events, history, stats, feedback");
     "history",
     history.status === 200 &&
       Array.isArray(history.json?.events) &&
-      history.json.events.length >= 1,
-    `GET /api/history → ${history.status} (${history.json?.events?.length ?? 0} events)`,
+      history.json.events.length >= 1 &&
+      history.json.events[0]?.rating === 1,
+    `GET /api/history → ${history.status} (${history.json?.events?.length ?? 0} events, rating=${history.json?.events?.[0]?.rating})`,
   );
 
   const stats = await req("/api/stats", { token: managerToken });

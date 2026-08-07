@@ -13,6 +13,7 @@ const historyEvent = z.object({
   breakdown: z.record(z.string(), z.number()).nullable(),
   flags: z.array(z.string()).nullable(),
   llm_platform: z.string().nullable(),
+  rating: z.number().nullable(),
   created_at: z.string(),
 });
 
@@ -70,6 +71,7 @@ historyRoutes.openapi(route, async (c) => {
         breakdown: e.breakdown,
         flags: e.flags,
         llm_platform: e.llm_platform,
+        rating: e.rating ?? null,
         created_at: e.created_at,
       })),
       note: "Prompt text never leaves your device — snippets are available in the extension's local history.",

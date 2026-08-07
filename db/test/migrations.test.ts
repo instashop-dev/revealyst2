@@ -39,6 +39,7 @@ describe("migrations (pg-mem)", () => {
       "001_init.sql",
       "002_magic_links.sql",
       "003_teams_personal_library.sql",
+      "004_rating.sql",
     ]);
 
     const { rows } = await client.query(
@@ -61,6 +62,7 @@ describe("migrations (pg-mem)", () => {
       "001_init.sql",
       "002_magic_links.sql",
       "003_teams_personal_library.sql",
+      "004_rating.sql",
     ]);
     expect(second).toEqual([]);
   });
@@ -111,6 +113,7 @@ describe("migrations (pg-mem)", () => {
         "breakdown",
         "flags",
         "llm_platform",
+        "rating",
         "created_at",
       ],
       library_prompts: [

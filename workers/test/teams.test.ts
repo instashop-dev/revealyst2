@@ -251,6 +251,7 @@ describe("personal dashboard data (§5.4)", () => {
             examples_included: 40,
           },
           llm_platform: "chat.openai.com",
+          rating: 1,
           timestamp: "2026-08-05T10:00:00.000Z",
         },
         memberToken,
@@ -272,6 +273,7 @@ describe("personal dashboard data (§5.4)", () => {
             examples_included: 10,
           },
           llm_platform: "claude.ai",
+          rating: -1,
           timestamp: "2026-08-04T10:00:00.000Z",
         },
         memberToken,
@@ -292,9 +294,13 @@ describe("personal dashboard data (§5.4)", () => {
       env,
     );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { events: Array<{ score: number; prompt_hash: string }> };
+    const body = (await res.json()) as {
+      events: Array<{ score: number; prompt_hash: string; rating: number | null }>;
+    };
     expect(body.events).toHaveLength(2);
     expect(body.events[0]?.score).toBe(82);
+    expect(body.events[0]?.rating).toBe(1);
+    expect(body.events[1]?.rating).toBe(-1);
     expect(JSON.stringify(body)).not.toContain("Write a");
   });
 

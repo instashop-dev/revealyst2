@@ -17,6 +17,8 @@ const eventRequest = z.object({
   timestamp: z.string().datetime().optional(),
   team_id: z.string().uuid().optional(),
   user_anon_id: z.string().max(128).optional(),
+  /** Thumbs up/down (-1 | 0 | 1) — spec §5.4 history rating. */
+  rating: z.number().int().min(-1).max(1).optional(),
 });
 const errorResponse = z.object({ error: z.string(), message: z.string() });
 
@@ -82,6 +84,7 @@ eventsRoutes.openapi(route, async (c) => {
     breakdown: body.breakdown ?? {},
     flags: body.flags ?? [],
     llmPlatform: body.llm_platform ?? null,
+    rating: body.rating ?? null,
     createdAt: body.timestamp,
   });
   return c.json({ success: true }, 200);
