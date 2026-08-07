@@ -114,6 +114,7 @@ export function HistoryPage() {
                 <th className="px-4 py-3">When</th>
                 <th className="px-4 py-3">Platform</th>
                 <th className="px-4 py-3">Score</th>
+                <th className="px-4 py-3">Rating</th>
                 <th className="px-4 py-3">Flags</th>
               </tr>
             </thead>
@@ -128,6 +129,11 @@ export function HistoryPage() {
                     <span className={`rounded px-2 py-0.5 font-mono ${scoreClass(e.score)}`}>
                       {e.score}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {e.rating === 1 && <span title="Rated helpful">👍</span>}
+                    {e.rating === -1 && <span title="Rated not helpful">👎</span>}
+                    {e.rating === null && <span className="text-zinc-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     {e.flags.length === 0 ? (
