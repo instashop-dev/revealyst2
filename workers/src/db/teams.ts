@@ -129,9 +129,12 @@ export function createTeamsRepo(db: SqlDb) {
       const merged = { ...current, ...patch };
       // Assignment cast (text → jsonb) is implicit on UPDATE; the `||`
       // operator is avoided for pg-mem compatibility.
+      // Pass the merged object (not a string) — postgres.js serializes it to
+      // proper jsonb; a string would be stored as a jsonb string value and
+      // come back as text, breaking `anonymize_identities` reads.
       const { rows } = await db.query<TeamRow>(
         "UPDATE teams SET settings = $2 WHERE id = $1 RETURNING *",
-        [teamId, JSON.stringify(merged)],
+        [teamId, merged],
       );
       const row = rows[0];
       if (!row) throw new Error("team settings update returned no row");
