@@ -16,7 +16,9 @@ export const PLATFORMS: PlatformDef[] = [
   {
     id: "chatgpt",
     name: "ChatGPT",
-    urlPattern: /chat\.openai\.com/,
+    // ChatGPT moved from chat.openai.com to chatgpt.com (server-side
+    // redirect); match both so the sidebar still injects on the live site.
+    urlPattern: /(chat\.openai\.com|chatgpt\.com)/,
     inputSelectors: [
       "#prompt-textarea",
       "form textarea",
@@ -73,13 +75,35 @@ export function detectPlatform(
   return { ...base, inputSelectors: [override, ...base.inputSelectors] };
 }
 
-/** Find the prompt input element using the platform's resilient selectors. */
+/** Find the prompt input element using the platform's resilient selectors.
+ *  Prefers the visible contenteditable editor and skips hidden fallback
+ *  elements (e.g. ChatGPT's screen-reader textarea). In jsdom/happy-dom there
+ *  is no layout, so visibility checks are disabled there to keep unit tests
+ *  deterministic. */
 export function findInput(doc: Document, platform: PlatformDef): HTMLElement | null {
+  const hasLayout = doc.documentElement.clientWidth > 0 || doc.documentElement.clientHeight > 0;
+  const candidates: HTMLElement[] = [];
   for (const selector of platform.inputSelectors) {
-    const el = doc.querySelector(selector);
-    if (el instanceof HTMLElement) return el;
+    for (const el of doc.querySelectorAll(selector)) {
+      if (el instanceof HTMLElement && !candidates.includes(el)) candidates.push(el);
+    }
   }
-  return null;
+  const usable = candidates.filter((el) => !hasLayout || isVisibleForInput(el));
+  // The contenteditable editor is the real composer; textareas are often
+  // invisible a11y fallbacks on modern LLM pages.
+  return (
+    usable.find((el) => el.isContentEditable) ??
+    usable.find((el) => el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) ??
+    usable[0] ??
+    null
+  );
+}
+
+function isVisibleForInput(el: HTMLElement): boolean {
+  if (typeof el.checkVisibility === "function" && !el.checkVisibility()) return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return false;
+  return true;
 }
 
 /**

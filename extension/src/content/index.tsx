@@ -5,7 +5,7 @@ import type { Suggestion } from "../shared/types.js";
 import type { ScoreEventPayload } from "../shared/types.js";
 import { CLIENT_TIPS } from "../shared/types.js";
 import styles from "./styles.css?inline";
-import { detectPlatform, waitForInput, type PlatformDef } from "../lib/platform.js";
+import { detectPlatform, findInput, waitForInput, type PlatformDef } from "../lib/platform.js";
 import { applySuggestion, getInputText, isEditable } from "../lib/apply.js";
 import { createDebouncedScorer, scorePrompt } from "../lib/scoring.js";
 import {
@@ -218,8 +218,10 @@ async function mainUnsafe(): Promise<void> {
             error?: string;
           };
           if (parsed.error) {
-            suggestions = [];
-            suggestionSource = null;
+            // Spec §7: the suggestion API is unreachable/erroring — degrade to
+            // the client-side generic tips instead of showing nothing.
+            suggestions = CLIENT_TIPS;
+            suggestionSource = "static";
           } else {
             suggestions = parsed.suggestions ?? [];
             suggestionSource = parsed.source ?? null;
@@ -363,20 +365,43 @@ async function mainUnsafe(): Promise<void> {
   }
 
   // ---- wire input events (input arrives async; poll then attach) ---------
-  rerender();
-  input = await waitForInput(document, platform);
-  inputMissing = input === null;
-  rerender();
-  if (input) {
+  const onEnter = (e: Event) => {
+    if ((e as KeyboardEvent).key === "Enter") onBlur();
+  };
+
+  /** Attach listeners to the given input element, replacing the old one. */
+  function attachInput(el: HTMLElement): void {
+    if (input === el) return;
+    if (input) {
+      input.removeEventListener("input", onInput);
+      input.removeEventListener("blur", onBlur);
+      input.removeEventListener("keydown", onEnter);
+    }
+    input = el;
+    inputMissing = false;
     input.addEventListener("input", onInput);
     input.addEventListener("blur", onBlur);
-    if (input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement) {
-      input.addEventListener("keydown", (e: Event) => {
-        if ((e as KeyboardEvent).key === "Enter") onBlur();
-      });
+    if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+      el.addEventListener("keydown", onEnter);
     }
+    rerender();
   }
+
+  rerender();
+  const initialInput = await waitForInput(document, platform);
+  inputMissing = initialInput === null;
+  rerender();
+  if (initialInput) attachInput(initialInput); // attaches listeners (input is null)
   console.log(`[revealyst] sidebar active on ${def.name} (input ${input ? "found" : "MISSING"})`);
+
+  // LLM pages often replace the composer node while the app boots (e.g.
+  // ChatGPT mounts a hidden a11y textarea before the visible ProseMirror
+  // editor). Re-check periodically and re-attach so scoring survives such
+  // swaps and SPA navigation (spec §7 resilience).
+  setInterval(() => {
+    const el = findInput(document, def);
+    if (el && el !== input) attachInput(el);
+  }, 2000);
 }
 
 void main();

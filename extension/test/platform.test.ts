@@ -5,6 +5,8 @@ import { detectPlatform, findInput, waitForInput, PLATFORMS } from "../src/lib/p
 describe("platform detection", () => {
   it("detects the three supported LLM platforms", () => {
     expect(detectPlatform("https://chat.openai.com/")?.id).toBe("chatgpt");
+    expect(detectPlatform("https://chatgpt.com/")?.id).toBe("chatgpt");
+    expect(detectPlatform("https://chatgpt.com/c/abc123")?.id).toBe("chatgpt");
     expect(detectPlatform("https://claude.ai/new")?.id).toBe("claude");
     expect(detectPlatform("https://gemini.google.com/app")?.id).toBe("gemini");
   });
@@ -40,6 +42,18 @@ describe("input finding (happy-dom)", () => {
     document.body.innerHTML = `<div>nothing here</div>`;
     const platform = detectPlatform("https://chat.openai.com/");
     expect(findInput(document, platform!)).toBeNull();
+  });
+
+  it("prefers the visible contenteditable editor over a hidden a11y fallback textarea", () => {
+    document.body.innerHTML = `
+      <form>
+        <textarea name="prompt-textarea" aria-hidden="true"></textarea>
+        <div id="prompt-textarea" contenteditable="true"></div>
+      </form>`;
+    const platform = detectPlatform("https://chatgpt.com/")!;
+    const input = findInput(document, platform);
+    expect(input?.tagName).toBe("DIV");
+    expect(input?.isContentEditable).toBe(true);
   });
 
   it("waits for an asynchronously mounted input", async () => {

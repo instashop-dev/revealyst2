@@ -4,10 +4,17 @@ import type { Suggestion } from "../shared/types.js";
  * One-click suggestion application (spec §5.3): manipulates the LLM input
  * DOM to prepend/append/insert the suggested preview text, then dispatches
  * native input events so the LLM page reacts as if the user typed.
+ *
+ * NB: contenteditable editors (ProseMirror etc.) render whitespace as
+ * non-breaking spaces (U+00A0) in textContent; normalise them so captured
+ * prompts are stable for scoring, history dedupe and saving.
  */
 export function getInputText(el: HTMLElement): string {
-  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return el.value;
-  return el.textContent ?? "";
+  const raw =
+    el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement
+      ? el.value
+      : (el.textContent ?? "");
+  return raw.replace(/\u00a0/g, " ");
 }
 
 export function setInputText(el: HTMLElement, text: string): void {
