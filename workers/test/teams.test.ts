@@ -540,3 +540,190 @@ describe("team events integrity", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("team invites (§5.8)", () => {
+  async function invite(
+    token: string,
+    email: string,
+    role?: string,
+  ): Promise<{ status: number; json: Record<string, unknown>; devLink?: string }> {
+    const body: Record<string, unknown> = { team_id: teamId, email };
+    if (role) body.role = role;
+    const res = await app.request("/api/team/invite", json(body, token), env);
+    const parsed = (await res.json()) as Record<string, unknown>;
+    return {
+      status: res.status,
+      json: parsed,
+      devLink: typeof parsed.dev_link === "string" ? parsed.dev_link : undefined,
+    };
+  }
+
+  async function listInvites(token: string): Promise<{
+    status: number;
+    invites: Array<Record<string, unknown>>;
+  }> {
+    const res = await app.request(
+      `/api/team/invites?team_id=${teamId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+      env,
+    );
+    return {
+      status: res.status,
+      invites: ((await res.json()) as { invites: unknown[] }).invites as Array<
+        Record<string, unknown>
+      >,
+    };
+  }
+
+  it("records a pending invite with its role and lists it (manager only)", async () => {
+    const inv = await invite(managerToken, "invitee@example.com", "manager");
+    expect(inv.status).toBe(200);
+    expect(typeof inv.json.invite_id).toBe("string");
+
+    const list = await listInvites(managerToken);
+    expect(list.status).toBe(200);
+    const pending = list.invites.find((i) => i.email === "invitee@example.com");
+    expect(pending?.status).toBe("pending");
+    expect(pending?.role).toBe("manager");
+    // The live jti must never leak to clients.
+    expect(JSON.stringify(list.invites)).not.toContain("jti");
+
+    // Members cannot list invites.
+    const asMember = await listInvites(memberToken);
+    expect(asMember.status).toBe(403);
+  });
+
+  it("re-inviting the same email refreshes the pending invite instead of duplicating", async () => {
+    const first = await invite(managerToken, "reinvitee@example.com");
+    expect(first.status).toBe(200);
+    const firstToken = first.devLink!.split("token=")[1]!;
+    const second = await invite(managerToken, "reinvitee@example.com", "member");
+    expect(second.status).toBe(200);
+    expect(second.json.invite_id).toBe(first.json.invite_id);
+
+    const list = await listInvites(managerToken);
+    expect(list.invites.filter((i) => i.email === "reinvitee@example.com")).toHaveLength(1);
+    expect(list.invites.find((i) => i.email === "reinvitee@example.com")?.role).toBe("member");
+
+    // The old link dies when the invite is refreshed — only the new one works.
+    const oldDead = await app.request("/api/auth/verify", json({ token: firstToken }), env);
+    expect(oldDead.status).toBe(401);
+    const newOk = await app.request(
+      "/api/auth/verify",
+      json({ token: second.devLink!.split("token=")[1]! }),
+      env,
+    );
+    expect(newOk.status).toBe(200);
+  });
+
+  it("rejects inviting someone who is already a member", async () => {
+    const res = await invite(managerToken, "jamie@example.com");
+    expect(res.status).toBe(400);
+    expect(res.json.error).toBe("already_member");
+  });
+
+  it("auto-joins the invitee with the invited role and settles the invite", async () => {
+    const inv = await invite(managerToken, "invitee@example.com");
+    expect(inv.devLink).toBeDefined();
+    const token = inv.devLink!.split("token=")[1]!;
+    const verify = await app.request("/api/auth/verify", json({ token }), env);
+    expect(verify.status).toBe(200);
+
+    const members = await app.request(
+      `/api/team/members?team_id=${teamId}`,
+      { headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    const memberBody = (await members.json()) as {
+      members: Array<{ display_name: string; role: string }>;
+    };
+    expect(memberBody.members.map((m) => m.role)).toContain("member");
+
+    const list = await listInvites(managerToken);
+    expect(list.invites.find((i) => i.email === "invitee@example.com")?.status).toBe("accepted");
+  });
+
+  it("revokes a pending invite and kills its magic link", async () => {
+    const inv = await invite(managerToken, "revokee@example.com");
+    const id = inv.json.invite_id as string;
+    const oldToken = inv.devLink!.split("token=")[1]!;
+
+    const revoke = await app.request(
+      `/api/team/invites/${id}/revoke`,
+      { method: "POST", headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    expect(revoke.status).toBe(200);
+
+    const list = await listInvites(managerToken);
+    expect(list.invites.find((i) => i.id === id)?.status).toBe("revoked");
+
+    // The revoked link must no longer verify (its jti was consumed).
+    const verify = await app.request("/api/auth/verify", json({ token: oldToken }), env);
+    expect(verify.status).toBe(401);
+  });
+
+  it("a revoked invite can never join, even if its magic row survived (defense in depth)", async () => {
+    const inv = await invite(managerToken, "zombie@example.com");
+    const id = inv.json.invite_id as string;
+    const token = inv.devLink!.split("token=")[1]!;
+
+    // Revoke the invite row WITHOUT consuming the jti (bypassing the route's
+    // cleanup) — simulating a best-effort consume failure. The jti-match gate
+    // in verify must still refuse the team join even though the token itself
+    // is a valid single-use magic link (session 200).
+    await seedRepos().invites.revoke(id);
+
+    const verify = await app.request("/api/auth/verify", json({ token }), env);
+    expect(verify.status).toBe(200);
+
+    // The user must not be a member of the team.
+    const members = await app.request(
+      `/api/team/members?team_id=${teamId}`,
+      { headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    const memberBody = (await members.json()) as { members: Array<{ display_name: string }> };
+    expect(memberBody.members.some((m) => m.display_name === "Zombie")).toBe(false);
+  });
+
+  it("re-sends a pending invite with a fresh link (old link dies)", async () => {
+    const inv = await invite(managerToken, "resendee@example.com");
+    const id = inv.json.invite_id as string;
+    const oldToken = inv.devLink!.split("token=")[1]!;
+
+    const resend = await app.request(
+      `/api/team/invites/${id}/resend`,
+      { method: "POST", headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    expect(resend.status).toBe(200);
+    const resendBody = (await resend.json()) as { dev_link: string };
+    const newToken = resendBody.dev_link.split("token=")[1]!;
+    expect(newToken).not.toBe(oldToken);
+
+    const oldVerify = await app.request("/api/auth/verify", json({ token: oldToken }), env);
+    expect(oldVerify.status).toBe(401);
+    const newVerify = await app.request("/api/auth/verify", json({ token: newToken }), env);
+    expect(newVerify.status).toBe(200);
+  });
+
+  it("blocks members and outsiders from revoking/resending", async () => {
+    const inv = await invite(managerToken, "blockee@example.com");
+    const id = inv.json.invite_id as string;
+    for (const token of [memberToken]) {
+      const revoke = await app.request(
+        `/api/team/invites/${id}/revoke`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+      expect(revoke.status).toBe(403);
+      const resend = await app.request(
+        `/api/team/invites/${id}/resend`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+        env,
+      );
+      expect(resend.status).toBe(403);
+    }
+  });
+});

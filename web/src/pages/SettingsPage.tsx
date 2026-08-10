@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/session.js";
 import { useTeams } from "../teams.js";
+import { TeamInvites } from "../components/TeamInvites.js";
 import type { TeamMember } from "../api/types.js";
 
 /**
@@ -14,8 +15,6 @@ export function SettingsPage() {
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [newTeamName, setNewTeamName] = useState("");
   const [createStatus, setCreateStatus] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [members, setMembers] = useState<TeamMember[] | null>(null);
   const [membersLoading, setMembersLoading] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
@@ -67,19 +66,6 @@ export function SettingsPage() {
       setSelectedTeamId(team.id);
     } catch (err) {
       setCreateStatus(err instanceof Error ? err.message : "Failed to create team");
-    }
-  }
-
-  async function invite(e: FormEvent) {
-    e.preventDefault();
-    if (!session || !selectedTeamId || !inviteEmail.trim()) return;
-    setInviteStatus(null);
-    try {
-      const res = await api.inviteMember(session.token, selectedTeamId, inviteEmail.trim());
-      setInviteStatus(res.message + (res.dev_link ? ` — dev link: ${res.dev_link}` : ""));
-      setInviteEmail("");
-    } catch (err) {
-      setInviteStatus(err instanceof Error ? err.message : "Invite failed");
     }
   }
 
@@ -259,24 +245,11 @@ export function SettingsPage() {
         </label>
 
         {selectedTeam && isManager && (
-          <form onSubmit={(e) => void invite(e)} className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1 text-sm">
-              Invite member
-              <input
-                type="email"
-                required
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="teammate@company.com"
-                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-              Send invite
-            </button>
-          </form>
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold text-zinc-700">Invite members</h3>
+            <TeamInvites teamId={selectedTeam.id} />
+          </div>
         )}
-        {inviteStatus && <p className="mt-2 text-sm text-emerald-700">{inviteStatus}</p>}
 
         {selectedTeam && (
           <div className="mt-5">

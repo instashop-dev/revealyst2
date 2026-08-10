@@ -140,12 +140,22 @@ export async function signRequest(params: {
   return { authorization, amzDate, payloadHash };
 }
 
-function buildBody(email: MagicLinkEmail, tpl: EmailTemplate): string {
-  const safeLink = email.magicLink
+function escapeHtml(value: string): string {
+  return value
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function buildBody(email: MagicLinkEmail, tpl: EmailTemplate): string {
+  const safeLink = escapeHtml(email.magicLink);
+  // Template fields may contain user input (e.g. the team name in invite
+  // emails) — escape them so a crafted team name cannot inject HTML into an
+  // email sent from the Revealyst SES identity.
+  const heading = escapeHtml(tpl.heading);
+  const body = escapeHtml(tpl.body);
+  const cta = escapeHtml(tpl.cta);
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f6f7f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
@@ -160,12 +170,12 @@ function buildBody(email: MagicLinkEmail, tpl: EmailTemplate): string {
           </tr>
           <tr>
             <td style="padding:32px;">
-              <h1 style="margin:0 0 12px;font-size:18px;color:#111827;">${tpl.heading}</h1>
+              <h1 style="margin:0 0 12px;font-size:18px;color:#111827;">${heading}</h1>
               <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;">
-                ${tpl.body}
+                ${body}
               </p>
               <a href="${safeLink}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;">
-                ${tpl.cta}
+                ${cta}
               </a>
               <p style="margin:24px 0 0;font-size:12px;line-height:1.6;color:#9ca3af;word-break:break-all;">
                 Or paste this link into your browser:<br />${safeLink}

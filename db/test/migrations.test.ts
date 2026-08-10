@@ -12,6 +12,7 @@ const EXPECTED_TABLES = [
   "library_prompts",
   "suggestions_feedback",
   "magic_link_tokens",
+  "team_invites",
   "schema_migrations",
 ];
 
@@ -40,6 +41,7 @@ describe("migrations (pg-mem)", () => {
       "002_magic_links.sql",
       "003_teams_personal_library.sql",
       "004_rating.sql",
+      "005_team_invites.sql",
     ]);
 
     const { rows } = await client.query(
@@ -63,6 +65,7 @@ describe("migrations (pg-mem)", () => {
       "002_magic_links.sql",
       "003_teams_personal_library.sql",
       "004_rating.sql",
+      "005_team_invites.sql",
     ]);
     expect(second).toEqual([]);
   });
@@ -128,6 +131,18 @@ describe("migrations (pg-mem)", () => {
       ],
       suggestions_feedback: ["user_id", "suggestion_id", "was_accepted"],
       magic_link_tokens: ["jti", "user_id", "expires_at"],
+      team_invites: [
+        "id",
+        "team_id",
+        "email",
+        "role",
+        "invited_by",
+        "status",
+        "jti",
+        "expires_at",
+        "created_at",
+        "updated_at",
+      ],
     };
     for (const [table, expected] of Object.entries(specColumns)) {
       for (const col of expected) {

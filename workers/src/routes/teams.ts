@@ -1,6 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { createRepos } from "../db/index.js";
+import type { TeamInviteRow } from "../db/schema.js";
 import { getDb } from "../db.js";
 import { requireAuth, signMagicToken } from "../auth.js";
 import { sendTeamInviteEmail } from "../email.js";
@@ -68,6 +69,17 @@ const listRoute = createRoute({
 
 const inviteLimiter = rateLimit(createRateLimiter(5, 60_000), 5);
 
+const inviteRole = z.enum(["member", "manager"]);
+
+const inviteCard = z.object({
+  id: z.string(),
+  email: z.string(),
+  role: inviteRole,
+  status: z.enum(["pending", "accepted", "revoked"]),
+  created_at: z.string(),
+  expires_at: z.string().nullable(),
+});
+
 const inviteRoute = createRoute({
   method: "post",
   path: "/api/team/invite",
@@ -76,7 +88,11 @@ const inviteRoute = createRoute({
     body: {
       content: {
         "application/json": {
-          schema: z.object({ team_id: z.string().uuid(), email: z.string().email() }),
+          schema: z.object({
+            team_id: z.string().uuid(),
+            email: z.string().email(),
+            role: inviteRole.optional().default("member"),
+          }),
         },
       },
     },
@@ -85,10 +101,18 @@ const inviteRoute = createRoute({
     200: {
       content: {
         "application/json": {
-          schema: z.object({ message: z.string(), dev_link: z.string().optional() }),
+          schema: z.object({
+            message: z.string(),
+            invite_id: z.string(),
+            dev_link: z.string().optional(),
+          }),
         },
       },
       description: "Invite sent (uniform 200 — delivery is server-side)",
+    },
+    400: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Invitee is already a member of this team",
     },
     401: {
       content: { "application/json": { schema: errorResponse } },
@@ -97,6 +121,93 @@ const inviteRoute = createRoute({
     403: {
       content: { "application/json": { schema: errorResponse } },
       description: "Not a team manager",
+    },
+  },
+});
+
+const invitesRoute = createRoute({
+  method: "get",
+  path: "/api/team/invites",
+  middleware: [requireAuth],
+  request: { query: z.object({ team_id: z.string().uuid() }) },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({ invites: z.array(inviteCard) }),
+        },
+      },
+      description: "Team invites (newest first) — manager only",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not a team manager",
+    },
+  },
+});
+
+const revokeInviteRoute = createRoute({
+  method: "post",
+  path: "/api/team/invites/{id}/revoke",
+  middleware: [requireAuth],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({ message: z.string() }),
+        },
+      },
+      description: "Invite revoked — its magic link stops working",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not a team manager",
+    },
+    404: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Invite not found",
+    },
+  },
+});
+
+const resendInviteRoute = createRoute({
+  method: "post",
+  path: "/api/team/invites/{id}/resend",
+  middleware: [requireAuth, inviteLimiter],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({ message: z.string(), dev_link: z.string().optional() }),
+        },
+      },
+      description: "Invite re-sent with a fresh link",
+    },
+    400: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Only pending invites can be re-sent",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not a team manager",
+    },
+    404: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Invite not found",
     },
   },
 });
@@ -234,13 +345,20 @@ teamRoutes.openapi(listRoute, async (c) => {
 });
 
 teamRoutes.openapi(inviteRoute, async (c) => {
-  const { team_id, email: rawEmail } = c.req.valid("json");
+  const { team_id, email: rawEmail, role } = c.req.valid("json");
   const email = rawEmail.trim().toLowerCase();
   const db = await getDb(c.env);
   const repos = createRepos(db);
 
   if (!(await repos.teams.isManager(team_id, c.var.userId))) {
     return c.json({ error: "forbidden", message: "Only managers can invite members" }, 403);
+  }
+
+  // Inviting an existing member is a no-op — surface it instead of sending a
+  // confusing second link.
+  const members = await repos.teams.listMembersWithUsers(team_id);
+  if (members.some((m) => m.email.toLowerCase() === email)) {
+    return c.json({ error: "already_member", message: "This person is already a member" }, 400);
   }
 
   let user = await repos.users.findByEmail(email);
@@ -252,11 +370,29 @@ teamRoutes.openapi(inviteRoute, async (c) => {
   } catch (err) {
     console.error("[teams] invite magic link jti insert failed:", err);
   }
+  const existingInvite = await repos.invites.findPendingByEmail(team_id, email);
+  const invite = await repos.invites.upsertPending(
+    team_id,
+    email,
+    role,
+    c.var.userId,
+    magicToken.jti,
+    magicToken.expiresAt,
+  );
+  // Re-inviting the same email replaces the old link — consume it so only the
+  // new link works (same lifecycle guarantee as revoke/resend).
+  if (existingInvite?.jti) {
+    try {
+      await repos.magic.consume(existingInvite.jti);
+    } catch (err) {
+      console.error("[teams] re-invite old jti consume failed:", err);
+    }
+  }
   const devLink = `${c.env.APP_URL}/auth/verify?token=${magicToken.token}`;
 
   if (c.env.DEV_MODE === "true") {
     console.log(`[teams] dev invite link for ${email}: ${devLink}`);
-    return c.json({ message: "invite sent", dev_link: devLink }, 200);
+    return c.json({ message: "invite sent", invite_id: invite.id, dev_link: devLink }, 200);
   }
 
   if (c.env.SES_ACCESS_KEY_ID && c.env.SES_SECRET_ACCESS_KEY) {
@@ -278,7 +414,125 @@ teamRoutes.openapi(inviteRoute, async (c) => {
   } else {
     console.error("[teams] SES is not configured — cannot deliver team invite");
   }
-  return c.json({ message: "invite sent" }, 200);
+  return c.json({ message: "invite sent", invite_id: invite.id }, 200);
+});
+
+type InviteCard = {
+  id: string;
+  email: string;
+  role: "member" | "manager";
+  status: "pending" | "accepted" | "revoked";
+  created_at: string;
+  expires_at: string | null;
+};
+
+function toInviteCard(invite: TeamInviteRow): InviteCard {
+  return {
+    id: invite.id,
+    email: invite.email,
+    role: invite.role === "manager" ? "manager" : "member",
+    status: invite.status === "pending" || invite.status === "revoked" ? invite.status : "accepted",
+    created_at: invite.created_at,
+    expires_at: invite.expires_at,
+  };
+}
+
+teamRoutes.openapi(invitesRoute, async (c) => {
+  const { team_id } = c.req.valid("query");
+  const db = await getDb(c.env);
+  const repos = createRepos(db);
+
+  if (!(await repos.teams.isManager(team_id, c.var.userId))) {
+    return c.json({ error: "forbidden", message: "Only managers can view invites" }, 403);
+  }
+  const invites = await repos.invites.listByTeam(team_id);
+  return c.json({ invites: invites.map(toInviteCard) }, 200);
+});
+
+teamRoutes.openapi(revokeInviteRoute, async (c) => {
+  const { id } = c.req.valid("param");
+  const db = await getDb(c.env);
+  const repos = createRepos(db);
+
+  const invite = await repos.invites.findById(id);
+  if (!invite) return c.json({ error: "not_found", message: "Invite not found" }, 404);
+  if (!(await repos.teams.isManager(invite.team_id, c.var.userId))) {
+    return c.json({ error: "forbidden", message: "Only managers can revoke invites" }, 403);
+  }
+  const jti = await repos.invites.revoke(id);
+  if (jti) {
+    try {
+      await repos.magic.consume(jti);
+    } catch (err) {
+      // Consuming the link is best-effort cleanup; the row is already revoked.
+      console.error("[teams] revoke jti consume failed:", err);
+    }
+  }
+  return c.json({ message: "invite revoked" }, 200);
+});
+
+teamRoutes.openapi(resendInviteRoute, async (c) => {
+  const { id } = c.req.valid("param");
+  const db = await getDb(c.env);
+  const repos = createRepos(db);
+
+  const invite = await repos.invites.findById(id);
+  if (!invite) return c.json({ error: "not_found", message: "Invite not found" }, 404);
+  if (!(await repos.teams.isManager(invite.team_id, c.var.userId))) {
+    return c.json({ error: "forbidden", message: "Only managers can re-send invites" }, 403);
+  }
+  if (invite.status !== "pending") {
+    return c.json({ error: "not_pending", message: "Only pending invites can be re-sent" }, 400);
+  }
+
+  let user = await repos.users.findByEmail(invite.email);
+  if (!user) user = await repos.users.create(invite.email);
+  const magicToken = await signMagicToken(user.id, user.email, c.env.JWT_SECRET, invite.team_id);
+  try {
+    await repos.magic.insert(magicToken.jti, user.id, magicToken.expiresAt);
+  } catch (err) {
+    console.error("[teams] resend magic link jti insert failed:", err);
+  }
+  const oldJti = invite.jti;
+  const updated = await repos.invites.rotateLink(id, magicToken.jti, magicToken.expiresAt);
+  if (!updated) {
+    return c.json({ error: "not_pending", message: "Only pending invites can be re-sent" }, 400);
+  }
+  // The previous link dies immediately (it is replaced by the fresh one).
+  if (oldJti) {
+    try {
+      await repos.magic.consume(oldJti);
+    } catch (err) {
+      console.error("[teams] resend old jti consume failed:", err);
+    }
+  }
+  const devLink = `${c.env.APP_URL}/auth/verify?token=${magicToken.token}`;
+
+  if (c.env.DEV_MODE === "true") {
+    console.log(`[teams] dev re-sent invite link for ${invite.email}: ${devLink}`);
+    return c.json({ message: "invite re-sent", dev_link: devLink }, 200);
+  }
+
+  if (c.env.SES_ACCESS_KEY_ID && c.env.SES_SECRET_ACCESS_KEY) {
+    const team = await repos.teams.findById(invite.team_id);
+    try {
+      await sendTeamInviteEmail(
+        {
+          region: c.env.SES_REGION ?? "us-east-1",
+          accessKeyId: c.env.SES_ACCESS_KEY_ID,
+          secretAccessKey: c.env.SES_SECRET_ACCESS_KEY,
+          fromEmail: c.env.SES_FROM_EMAIL ?? "Revealyst <noreply@e.revealyst.com>",
+        },
+        { to: invite.email, magicLink: devLink, teamName: team?.name ?? "your team" },
+      );
+      console.log("[teams] re-sent team invite emailed via SES");
+    } catch (err) {
+      console.error("[teams] re-sent team invite email send failed:", err);
+    }
+  } else {
+    console.error("[teams] SES is not configured — cannot deliver re-sent invite");
+  }
+  return c.json({ message: "invite re-sent" }, 200);
 });
 
 teamRoutes.openapi(membersRoute, async (c) => {

@@ -71,3 +71,16 @@ export interface MagicLinkTokenRow {
   user_id: string;
   expires_at: string;
 }
+
+export interface TeamInviteRow {
+  id: string;
+  team_id: string;
+  email: string;
+  role: string;
+  invited_by: string | null;
+  status: "pending" | "accepted" | "revoked";
+  jti: string | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}

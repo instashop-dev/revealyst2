@@ -7,7 +7,8 @@
  *   auth (magic → verify → session) → personal dashboard data (events →
  *   history → stats) → feedback → suggestion engine → team lifecycle
  *   (create → invite → auto-join → members → opt-in governance →
- *   dashboard) → shared library (save → dedupe → list → get → versioning →
+ *   dashboard) → team invites (track → re-send → accept → revoke) →
+ *   shared library (save → dedupe → list → get → versioning →
  *   manager governance) → cleanup of test rows.
  *
  * Why this exists: the unit suites run against pg-mem (in-memory) and miss
@@ -35,6 +36,10 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const RUN_ID = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const MANAGER_EMAIL = `e2e.journey.${RUN_ID}.manager@example.com`;
 const MEMBER_EMAIL = `e2e.journey.${RUN_ID}.member@example.com`;
+const INVITEE_EMAIL = `e2e.journey.${RUN_ID}.invitee@example.com`;
+const REVOKEE_EMAIL = `e2e.journey.${RUN_ID}.revokee@example.com`;
+const RESENDEE_EMAIL = `e2e.journey.${RUN_ID}.resendee@example.com`;
+const ALL_TEST_EMAILS = [MANAGER_EMAIL, MEMBER_EMAIL, INVITEE_EMAIL, REVOKEE_EMAIL, RESENDEE_EMAIL];
 const PROMPT_TEXT = "Summarize the quarterly sales numbers into a slide deck outline";
 const PROMPT_HASH = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HEX64 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -366,6 +371,107 @@ step("4. Team: create → invite → auto-join → members → governance → da
 }
 
 // ---------------------------------------------------------------------------
+// 4b. Team invites (§5.8): tracked lifecycle — pending → re-send → accept,
+//     and revoke kills the magic link
+// ---------------------------------------------------------------------------
+step("4b. Team invites: track, re-send, accept, revoke");
+{
+  // Manager invites with an explicit role (invitee joins as a manager).
+  const inv = await req("/api/team/invite", {
+    method: "POST",
+    token: managerToken,
+    body: { team_id: teamId, email: INVITEE_EMAIL, role: "manager" },
+  });
+  expect(
+    "invite tracked",
+    inv.status === 200 && typeof inv.json?.invite_id === "string",
+    `POST /api/team/invite → ${inv.status} (invite_id)`,
+  );
+  const invId = inv.json?.invite_id;
+  const invToken = inv.json?.dev_link?.split("token=")[1];
+
+  const list = await req(`/api/team/invites?team_id=${teamId}`, { token: managerToken });
+  expect(
+    "invites list",
+    list.status === 200 &&
+      list.json?.invites?.some(
+        (i) => i.id === invId && i.status === "pending" && i.role === "manager",
+      ),
+    `GET /api/team/invites → ${list.status} (${list.json?.invites?.length ?? 0} invites)`,
+  );
+
+  const memberList = await req(`/api/team/invites?team_id=${teamId}`, { token: memberToken });
+  expect(
+    "invites manager-only",
+    memberList.status === 403,
+    `member invites → ${memberList.status} (expected 403)`,
+  );
+
+  // Accept → invitee joins with the invited role; the invite settles.
+  const mv = await req("/api/auth/verify", { method: "POST", body: { token: invToken } });
+  expect("invitee verify", mv.status === 200, `invitee verify → ${mv.status}`);
+
+  const members = await req(`/api/team/members?team_id=${teamId}`, { token: managerToken });
+  expect(
+    "invited role applied",
+    members.status === 200 &&
+      (members.json?.members ?? []).filter((m) => m.role === "manager").length === 2,
+    `members after invite → ${members.json?.members?.length ?? 0} (managers=2)`,
+  );
+
+  const after = await req(`/api/team/invites?team_id=${teamId}`, { token: managerToken });
+  const settled = after.json?.invites?.find((i) => i.id === invId);
+  expect("invite accepted", settled?.status === "accepted", `invite status → ${settled?.status}`);
+
+  // Revoke kills the pending link.
+  const rev = await req("/api/team/invite", {
+    method: "POST",
+    token: managerToken,
+    body: { team_id: teamId, email: REVOKEE_EMAIL },
+  });
+  const revId = rev.json?.invite_id;
+  const revToken = rev.json?.dev_link?.split("token=")[1];
+  const revoke = await req(`/api/team/invites/${revId}/revoke`, {
+    method: "POST",
+    token: managerToken,
+  });
+  expect("revoke", revoke.status === 200, `revoke → ${revoke.status}`);
+  const dead = await req("/api/auth/verify", { method: "POST", body: { token: revToken } });
+  expect(
+    "revoked link dead",
+    dead.status === 401,
+    `revoked link verify → ${dead.status} (expected 401)`,
+  );
+
+  // Re-send rotates the link: the old one dies, the new one works.
+  const rs = await req("/api/team/invite", {
+    method: "POST",
+    token: managerToken,
+    body: { team_id: teamId, email: RESENDEE_EMAIL },
+  });
+  const rsId = rs.json?.invite_id;
+  const oldToken = rs.json?.dev_link?.split("token=")[1];
+  const resend = await req(`/api/team/invites/${rsId}/resend`, {
+    method: "POST",
+    token: managerToken,
+  });
+  expect(
+    "resend",
+    resend.status === 200 && typeof resend.json?.dev_link === "string",
+    `resend → ${resend.status}`,
+  );
+  const newToken = resend.json?.dev_link?.split("token=")[1];
+  const oldDead = await req("/api/auth/verify", { method: "POST", body: { token: oldToken } });
+  expect(
+    "old link dead",
+    oldDead.status === 401,
+    `old link verify → ${oldDead.status} (expected 401)`,
+  );
+  const newOk = await req("/api/auth/verify", { method: "POST", body: { token: newToken } });
+  expect("new link works", newOk.status === 200, `new link verify → ${newOk.status}`);
+}
+
+// ---------------------------------------------------------------------------
 // 5. Shared library (spec §5.6): save → dedupe → list → get → version → governance
 // ---------------------------------------------------------------------------
 step("5. Library: save, dedupe, list, get, versioning, governance");
@@ -467,36 +573,39 @@ if (DATABASE_URL) {
     // Children first, then teams, then users (teams.created_by has no cascade).
     await client.query(
       `DELETE FROM suggestions_feedback WHERE user_id IN (
-         SELECT id FROM users WHERE email = $1 OR email = $2)`,
-      [MANAGER_EMAIL, MEMBER_EMAIL],
+         SELECT id FROM users WHERE email = ANY($1))`,
+      [ALL_TEST_EMAILS],
+    );
+    await client.query(
+      `DELETE FROM team_invites WHERE email = ANY($1) OR team_id IN (
+         SELECT id FROM teams WHERE created_by IN (
+           SELECT id FROM users WHERE email = ANY($1)))`,
+      [ALL_TEST_EMAILS],
     );
     await client.query(
       `DELETE FROM library_prompts WHERE team_id IN (
          SELECT id FROM teams WHERE created_by IN (
-           SELECT id FROM users WHERE email = $1 OR email = $2))`,
-      [MANAGER_EMAIL, MEMBER_EMAIL],
+           SELECT id FROM users WHERE email = ANY($1)))`,
+      [ALL_TEST_EMAILS],
     );
     await client.query(
       `DELETE FROM prompt_events WHERE user_id IN (
-         SELECT id FROM users WHERE email = $1 OR email = $2) OR team_id IN (
+         SELECT id FROM users WHERE email = ANY($1)) OR team_id IN (
          SELECT id FROM teams WHERE created_by IN (
-           SELECT id FROM users WHERE email = $1 OR email = $2))`,
-      [MANAGER_EMAIL, MEMBER_EMAIL],
+           SELECT id FROM users WHERE email = ANY($1)))`,
+      [ALL_TEST_EMAILS],
     );
     await client.query(
       `DELETE FROM team_members WHERE user_id IN (
-         SELECT id FROM users WHERE email = $1 OR email = $2)`,
-      [MANAGER_EMAIL, MEMBER_EMAIL],
+         SELECT id FROM users WHERE email = ANY($1))`,
+      [ALL_TEST_EMAILS],
     );
     await client.query(
       `DELETE FROM teams WHERE created_by IN (
-         SELECT id FROM users WHERE email = $1 OR email = $2)`,
-      [MANAGER_EMAIL, MEMBER_EMAIL],
+         SELECT id FROM users WHERE email = ANY($1))`,
+      [ALL_TEST_EMAILS],
     );
-    await client.query(`DELETE FROM users WHERE email = $1 OR email = $2`, [
-      MANAGER_EMAIL,
-      MEMBER_EMAIL,
-    ]);
+    await client.query(`DELETE FROM users WHERE email = ANY($1)`, [ALL_TEST_EMAILS]);
     // Also drop the anonymous event written in step 2 (hashed-only, no user).
     await client.query(`DELETE FROM prompt_events WHERE prompt_hash = $1`, [PROMPT_HASH]);
     pass("test rows removed from RDS");

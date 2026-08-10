@@ -41,6 +41,16 @@ export interface TeamMember {
   display_name: string;
 }
 
+/** A tracked team invite (§5.8) — pending links can be re-sent or revoked. */
+export interface TeamInvite {
+  id: string;
+  email: string;
+  role: TeamRole;
+  status: "pending" | "accepted" | "revoked";
+  created_at: string;
+  expires_at: string | null;
+}
+
 export interface LibraryCard {
   id: string;
   title: string | null;

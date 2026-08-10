@@ -8,6 +8,7 @@ import type {
   Session,
   StatsResponse,
   Team,
+  TeamInvite,
   TeamMember,
   User,
 } from "./types.js";
@@ -91,11 +92,32 @@ export const api = {
     token: string,
     teamId: string,
     email: string,
-  ): Promise<{ message: string; dev_link?: string }> {
+    role: "member" | "manager" = "member",
+  ): Promise<{ message: string; invite_id: string; dev_link?: string }> {
     return request("/api/team/invite", {
       method: "POST",
       headers: authed(token),
-      body: JSON.stringify({ team_id: teamId, email }),
+      body: JSON.stringify({ team_id: teamId, email, role }),
+    });
+  },
+
+  teamInvites(token: string, teamId: string): Promise<{ invites: TeamInvite[] }> {
+    return request(`/api/team/invites?team_id=${encodeURIComponent(teamId)}`, {
+      headers: authed(token),
+    });
+  },
+
+  revokeInvite(token: string, inviteId: string): Promise<{ message: string }> {
+    return request(`/api/team/invites/${encodeURIComponent(inviteId)}/revoke`, {
+      method: "POST",
+      headers: authed(token),
+    });
+  },
+
+  resendInvite(token: string, inviteId: string): Promise<{ message: string; dev_link?: string }> {
+    return request(`/api/team/invites/${encodeURIComponent(inviteId)}/resend`, {
+      method: "POST",
+      headers: authed(token),
     });
   },
 
