@@ -1,0 +1,7 @@
+# CPU-only fine-tuning + ONNX export stack for the Revealyst prompt scorer.
+# Install with:  python -m pip install -r ml/python/requirements.txt
+torch>=2.2
+transformers>=4.40
+onnx>=1.16
+onnxruntime>=1.18
+numpy>=1.26

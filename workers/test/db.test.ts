@@ -180,6 +180,80 @@ describe("events repo", () => {
   });
 });
 
+describe("personalImprovement (north-star metrics, spec §4)", () => {
+  let liftUserId: string;
+  let newbieId: string;
+  const day = 86_400_000;
+
+  beforeAll(async () => {
+    const lift = await repos.users.create("lift@example.com");
+    liftUserId = lift.id;
+    const newbie = await repos.users.create("newbie@example.com");
+    newbieId = newbie.id;
+
+    const insert = (promptHash: string, score: number, daysAgo: number) =>
+      repos.events.insert({
+        userId: liftUserId,
+        userAnonId: "anon-lift",
+        teamId: null,
+        promptHash,
+        score,
+        breakdown: {
+          specificity: score,
+          context: score,
+          role_clarity: score,
+          output_format: score,
+          examples_included: score,
+        },
+        flags: [],
+        llmPlatform: "chatgpt.com",
+        createdAt: new Date(Date.now() - daysAgo * day).toISOString(),
+      });
+
+    // Current 7-day window: avg 65, one re-prompt (a1 repeated).
+    await insert("a1", 60, 1);
+    await insert("a1", 70, 2);
+    // Baseline window (21-28d ago): avg 48.
+    await insert("b1", 50, 22);
+    await insert("b2", 40, 23);
+    await insert("b3", 55, 25);
+    // Previous 30-day window (28-60d ago): one re-prompt (c1 repeated).
+    await insert("c1", 60, 40);
+    await insert("c1", 60, 45);
+  });
+
+  it("computes the 4-week PQS lift from the current vs baseline windows", async () => {
+    const imp = await repos.events.personalImprovement(liftUserId);
+    expect(imp.currentAvg).toBe(65); // round((60+70)/2)
+    expect(imp.baselineAvg).toBe(48); // round((50+40+55)/3)
+    expect(imp.pqsDelta4w).toBe(17); // 65 - 48
+  });
+
+  it("computes re-prompt rates for the current and previous 30-day windows", async () => {
+    const imp = await repos.events.personalImprovement(liftUserId);
+    // last 30d: 5 events [a1,a1,b1,b2,b3] → 1 repeat → 0.2
+    expect(imp.repromptRate).toBe(0.2);
+    // previous 30d: 2 events [c1,c1] → 1 repeat → 0.5
+    expect(imp.repromptRatePrev).toBe(0.5);
+  });
+
+  it("counts active weeks out of the last 4 buckets", async () => {
+    const imp = await repos.events.personalImprovement(liftUserId);
+    // events land in bucket 0 (current week) and bucket 3 (21-28d ago)
+    expect(imp.activeWeeks).toBe(2);
+  });
+
+  it("returns nulls for a user with no events (too new to judge)", async () => {
+    const imp = await repos.events.personalImprovement(newbieId);
+    expect(imp.pqsDelta4w).toBeNull();
+    expect(imp.currentAvg).toBeNull();
+    expect(imp.baselineAvg).toBeNull();
+    expect(imp.repromptRate).toBeNull();
+    expect(imp.repromptRatePrev).toBeNull();
+    expect(imp.activeWeeks).toBe(0);
+  });
+});
+
 describe("library repo", () => {
   let promptId: string;
   beforeAll(async () => {

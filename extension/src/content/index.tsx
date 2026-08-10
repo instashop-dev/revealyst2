@@ -146,7 +146,16 @@ async function mainUnsafe(): Promise<void> {
   responseObserver.observe(document.body, { childList: true, subtree: true });
 
   // ---- event sync (attributed when the user has connected their account) ---
+  // The live meter can re-score the same settled prompt (debounce flush,
+  // suggestion apply), which would duplicate identical events and inflate the
+  // server's re-prompt rate (§4 KPI). Skip a score event whose hash matches
+  // the previous one; ratings always pass through (spec §5.4).
+  let lastCloudHash: string | null = null;
   function sendEvent(payload: ScoreEventPayload): void {
+    if (payload.rating == null) {
+      if (payload.prompt_hash === lastCloudHash) return;
+      lastCloudHash = payload.prompt_hash;
+    }
     void (async () => {
       const attempt = (body: ScoreEventPayload, withTeam: boolean) =>
         chrome.runtime.sendMessage({

@@ -169,12 +169,74 @@ A full spec-vs-code audit (spec §5–§7 as primary source) found and fixed:
 | "Your first week" mini-challenge badge missing                                                                                                                                                                            | §5.8                                                                                          | "First Week Challenge" badge (5 green prompts) in Achievements, judged on the 7-day stats window                                                                                                                                               |
 | `/api/suggestion` request from the extension omitted `prompt_hash`                                                                                                                                                        | §6.4 critical fields                                                                          | Extension now sends it                                                                                                                                                                                                                         |
 
-**Genuine limitation (not fixed):** the spec §5.2 client-side DistilBERT/ONNX model is
-not wired into the extension — no trained model artifact exists (`docs/ml-notes.md`).
-`packages/scoring` ships a tested `OnnxScoringAdapter` that falls back to rules when
-the model is unavailable; the rule engine is the working path. Wiring the adapter is a
-one-line change in `extension/src/lib/scoring.ts` once a real `revealyst/prompt-scorer-v1`
-model is published.
+**Audit limitation (since closed):** at audit time the spec §5.2 client-side
+DistilBERT/ONNX model was not wired into the extension — no trained artifact
+existed (`docs/ml-notes.md`). That gap is now closed by the rule-distilled
+`prompt-scorer-v1` below.
+
+## Post-audit: ONNX prompt-scorer + north-star metrics (2026-08-10)
+
+### ONNX prompt-scorer (spec §5.2 — closes the limitation above)
+
+The local scorer now ships as a **rule distillation**: a trained int8 ONNX
+model that reproduces the rule engine on-device until human-labeled beta data
+exists.
+
+- **Corpus** (`ml/src/generate-corpus.ts`, `npm run generate:corpus -w ml`):
+  deterministic seeded generator → 6000 train / 1500 eval synthetic prompts
+  (templates, assembled feature blocks, degraded variants, edge cases),
+  labeled by `RuleScoringEngine` → `ml/data/{corpus,eval}.jsonl` (gitignored,
+  reproducible with the same seed).
+- **Training** (`ml/python/train.py`, CPU): fine-tunes
+  `sentence-transformers/all-MiniLM-L6-v2` as a 6-output regression (MSE,
+  targets `[overall, specificity, context, role_clarity, output_format,
+examples_included]` normalized 0..1), then exports the encoder as
+  feature-extraction ONNX (opset 14) + int8 dynamic quantization, writes the
+  regression head to `head.json`, and verifies with onnxruntime.
+- **Artifact** (`ml/models/prompt-scorer-v1/`): `model_quantized.onnx`
+  (~23 MB int8), `head.json`, tokenizer files, provenance `README.md`
+  (train data, eval MAE, latency, sizes). The fp32 `model.onnx` + checkpoints
+  are gitignored. Eval (int8, eval split, 0-100 scale): mean MAE **2.92**,
+  overall MAE **1.72**, Pearson r **0.996**, median latency **3.7 ms**
+  (`ml/python/eval.py`); the real adapter path (Transformers.js +
+  `OnnxScoringAdapter`, `ml/scripts/verify-node.mjs`) measures mean MAE
+  **2.89**, overall **1.67**, 8.2 ms/prompt over 1500 prompts, zero
+  fallbacks.
+- **Hosting**: `models` deploy job + `ml/scripts/upload.mjs` upload the
+  artifact to the R2 bucket `revealyst-models`; one-time public access +
+  `MODEL_BASE_URL` setup in `docs/runbook.md`. Until configured, the
+  extension falls back to rules (spec §7).
+- **Adapter** (`packages/scoring/src/onnx-adapter.ts`): new
+  `feature-extraction` + `head.json` path (mean-pooled embedding →
+  `sigmoid(W·h + b)` → 6 dims), injected `pipelineFactory` for bundled
+  extensions, and the original `text-classification` contract preserved.
+  Rule fallback with `modelError` on any failure; the sidebar shows a small
+  "local model unavailable" note (spec §7). `@xenova/transformers` added to
+  the extension; `https://*.r2.dev/*` + `https://cdn.jsdelivr.net/*`
+  host permissions.
+- **Tests**: adapter unit tests (feature-extraction head math, Tensor shapes,
+  head-fetch failure, wrong-shape fallback, pipelineFactory) + corpus
+  generator tests; full workspace gates green.
+
+### North-star instrumentation (spec §4)
+
+`GET /api/stats` now returns an `improvement` block (defined in
+`workers/src/db/events.ts` → `personalImprovement`, pg-mem tested):
+
+- `pqs_delta_4w` — current 7-day avg minus the 7-day avg 21-28 days ago (the
+  spec north star: PQS up ≥10 pts over 4 weeks). Null until both windows have
+  data.
+- `reprompt_rate` / `reprompt_rate_prev` — share of events whose
+  `prompt_hash` was seen earlier in the last 30 days / previous 30 days
+  (spec KPI: re-prompt rate reduction ≥30%; the extension dedupes consecutive
+  repeats, so this measures genuine re-use).
+- `active_weeks` — distinct 7-day buckets (of the last 4) with ≥1 event
+  (weekly retention signal; spec: 45% week-4 retention).
+
+The dashboard (Progress → "North-star (spec §4)") shows the 4-week lift card
+(green ≥10 pts), the re-prompt rate with the prior-month delta, and active
+weeks. The journey e2e asserts the block's shape; team/global aggregates are
+future work.
 
 ## How to verify
 

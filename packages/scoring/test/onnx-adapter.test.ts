@@ -69,3 +69,138 @@ describe("OnnxScoringAdapter model output contract", () => {
     expect(adapter.engineKind).toBe("rules");
   });
 });
+
+describe("OnnxScoringAdapter feature-extraction + regression head (prompt-scorer-v1)", () => {
+  const DIM = 384;
+  /** One-hot embedding [1,0,0,...] so head math is checkable by hand. */
+  function oneHotEmbedding(): number[] {
+    const e = new Array<number>(DIM).fill(0);
+    e[0] = 1;
+    return e;
+  }
+  const head = {
+    weight: Array.from({ length: 6 }, (_, i) => {
+      const row = new Array<number>(DIM).fill(0);
+      row[i] = i === 0 ? 1 : 0; // only overall gets signal; others -> logit 0
+      return row;
+    }),
+    bias: new Array<number>(6).fill(0),
+    pooling: "mean" as const,
+    activation: "sigmoid" as const,
+    dim_names: [
+      "overall",
+      "specificity",
+      "context",
+      "role_clarity",
+      "output_format",
+      "examples_included",
+    ],
+  };
+
+  beforeEach(() => {
+    pipeline.mockClear();
+  });
+
+  it("computes the 6 dims via sigmoid(linear head) on the pooled embedding", async () => {
+    vi.doMock("@xenova/transformers", () => ({ pipeline: async () => pipeline }));
+    currentOutput = oneHotEmbedding();
+    const adapter = new OnnxScoringAdapter({
+      modelId: "https://models.example.com/prompt-scorer-v1",
+      task: "feature-extraction",
+      quantized: true,
+      head,
+    });
+    const result = await adapter.score("Act as a marketer. Write a cold email in under 100 words.");
+    expect(result.meta.engine).toBe("onnx");
+    expect(adapter.engineKind).toBe("onnx");
+    // overall: sigmoid(1*1+0)=0.731 -> 73.1; dims: sigmoid(0)=0.5 -> 50.
+    expect(result.score).toBe(73);
+    expect(result.breakdown).toEqual({
+      specificity: 50,
+      context: 50,
+      role_clarity: 50,
+      output_format: 50,
+      examples_included: 50,
+    });
+    // Truncation contract still applies to the model input.
+    await adapter.score("y".repeat(17_000));
+    expect(pipeline.mock.calls[pipeline.mock.calls.length - 1]?.[0]).toBe("y".repeat(1000));
+  });
+
+  it("accepts a Tensor-shaped embedding ({data: Float32Array})", async () => {
+    vi.doMock("@xenova/transformers", () => ({ pipeline: async () => pipeline }));
+    currentOutput = { data: new Float32Array(oneHotEmbedding()), dims: [1, DIM] };
+    const adapter = new OnnxScoringAdapter({
+      modelId: "revealyst/prompt-scorer-v1",
+      task: "feature-extraction",
+      head,
+    });
+    const result = await adapter.score("Explain quantum computing to beginners.");
+    expect(result.meta.engine).toBe("onnx");
+    expect(result.score).toBe(73);
+  });
+
+  it("falls back to rules when the head cannot be fetched (offline / 404)", async () => {
+    vi.doMock("@xenova/transformers", () => ({ pipeline: async () => pipeline }));
+    currentOutput = oneHotEmbedding();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unreachable")));
+    try {
+      const adapter = new OnnxScoringAdapter({
+        modelId: "https://models.example.com/prompt-scorer-v1",
+        task: "feature-extraction",
+      });
+      const result = await adapter.score("Help me with my thing.");
+      expect(result.meta.engine).toBe("rules");
+      expect(result.meta.modelError).toContain("regression head unavailable");
+      expect(adapter.engineKind).toBe("rules");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("falls back to rules on a wrong embedding shape", async () => {
+    vi.doMock("@xenova/transformers", () => ({ pipeline: async () => pipeline }));
+    currentOutput = new Array<number>(16).fill(0); // not 384
+    const adapter = new OnnxScoringAdapter({
+      modelId: "revealyst/prompt-scorer-v1",
+      task: "feature-extraction",
+      head,
+    });
+    const result = await adapter.score("hi");
+    expect(result.meta.engine).toBe("rules");
+    expect(result.meta.modelError).toBe("unexpected embedding shape");
+  });
+
+  it("uses an injected pipelineFactory instead of the dynamic import", async () => {
+    vi.doMock("@xenova/transformers", () => ({ pipeline: async () => pipeline }));
+    currentOutput = oneHotEmbedding();
+    const factory = vi.fn(async () => pipeline);
+    const adapter = new OnnxScoringAdapter({
+      modelId: "https://models.example.com/prompt-scorer-v1",
+      task: "feature-extraction",
+      head,
+      pipelineFactory: factory,
+    });
+    const result = await adapter.score("Help me.");
+    expect(result.meta.engine).toBe("onnx");
+    expect(factory).toHaveBeenCalledWith(
+      "feature-extraction",
+      "https://models.example.com/prompt-scorer-v1",
+      expect.objectContaining({ quantized: true, pooling: "mean" }),
+    );
+  });
+
+  it("falls back to rules when the injected pipelineFactory throws", async () => {
+    const adapter = new OnnxScoringAdapter({
+      modelId: "https://models.example.com/prompt-scorer-v1",
+      task: "feature-extraction",
+      head,
+      pipelineFactory: async () => {
+        throw new Error("transformers.js unavailable");
+      },
+    });
+    const result = await adapter.score("Help me.");
+    expect(result.meta.engine).toBe("rules");
+    expect(adapter.engineKind).toBe("rules");
+  });
+});

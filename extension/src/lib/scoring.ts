@@ -1,7 +1,8 @@
-import { RuleScoringEngine, type ScoreResult } from "@revealyst/scoring";
+import type { ScoreResult } from "@revealyst/scoring";
+import { createOnnxEngine } from "./model-config.js";
 import { sha256Hex } from "./hash.js";
 
-const engine = new RuleScoringEngine();
+const engine = createOnnxEngine();
 
 export interface ScoreUpdate {
   result: ScoreResult;
@@ -14,6 +15,11 @@ export interface ScoreUpdate {
  * Score a prompt locally (spec §5.2: rule-based scoring, <200ms, no prompt
  * text leaves the machine by default). Returns the hash used for analytics
  * events — the raw prompt is never transmitted.
+ *
+ * The engine prefers the local ONNX model when it loads (feature-extraction +
+ * regression head); any model failure falls back to the rule engine, and the
+ * failure is visible via result.meta.engine === "rules" +
+ * result.meta.modelError (spec §7 "model unavailable" warning).
  */
 export async function scorePrompt(prompt: string): Promise<ScoreUpdate> {
   const result = await engine.score(prompt);

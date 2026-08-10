@@ -119,6 +119,16 @@ export interface StatsResponse {
   streak_days: number;
   trend: Array<{ day: string; avg_score: number }>;
   radar: Record<string, number>;
+  /** North-star instrumentation (spec §4): 4-week lift, re-prompt rate,
+   *  weekly retention. Nulls when the user has no data in the window. */
+  improvement: {
+    pqs_delta_4w: number | null;
+    current_avg: number | null;
+    baseline_avg: number | null;
+    reprompt_rate: number | null;
+    reprompt_rate_prev: number | null;
+    active_weeks: number;
+  };
 }
 
 export interface ScoreEvent {

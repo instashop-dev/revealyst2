@@ -163,9 +163,17 @@ describe("factory", () => {
   });
 
   it("creates an ONNX adapter when a model config is given (falls back to rules)", async () => {
-    const e = createScoringEngine({ modelId: "revealyst/prompt-scorer-v1" });
+    // @xenova/transformers is now a real dependency, so the adapter's dynamic
+    // import would attempt an actual model download from the network. Inject a
+    // failing pipelineFactory to keep the test hermetic: it is the deterministic
+    // stand-in for "model cannot be loaded".
+    const e = createScoringEngine({
+      modelId: "revealyst/prompt-scorer-v1",
+      pipelineFactory: async () => {
+        throw new Error("transformers.js unavailable");
+      },
+    });
     expect(e.engineKind).toBe("onnx");
-    // No model artifact exists and @xenova/transformers is optional → rule fallback
     const result = await e.score("Help me write something good.");
     expect(result.meta.engine).toBe("rules");
     // engineKind reflects the effective engine after the fallback (spec §7:

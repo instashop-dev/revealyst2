@@ -185,10 +185,21 @@ step("2. Events, history, stats, feedback");
   );
 
   const stats = await req("/api/stats", { token: managerToken });
+  const imp = stats.json?.improvement;
   expect(
     "stats",
-    stats.status === 200 && stats.json?.prompts_count >= 1,
-    `GET /api/stats → ${stats.status} (prompts=${stats.json?.prompts_count})`,
+    stats.status === 200 &&
+      stats.json?.prompts_count >= 1 &&
+      // North-star block (spec §4): present, typed, and sane for a fresh user.
+      imp !== undefined &&
+      typeof imp.active_weeks === "number" &&
+      (imp.pqs_delta_4w === null || typeof imp.pqs_delta_4w === "number") &&
+      (imp.current_avg === null || typeof imp.current_avg === "number") &&
+      (imp.baseline_avg === null || typeof imp.baseline_avg === "number") &&
+      (imp.reprompt_rate === null || typeof imp.reprompt_rate === "number") &&
+      (imp.reprompt_rate_prev === null || typeof imp.reprompt_rate_prev === "number") &&
+      imp.active_weeks >= 1, // fresh user scored today → current week counts
+    `GET /api/stats → ${stats.status} (prompts=${stats.json?.prompts_count}, active_weeks=${imp?.active_weeks}, delta4w=${imp?.pqs_delta_4w})`,
   );
 
   const fb = await req("/api/feedback", {

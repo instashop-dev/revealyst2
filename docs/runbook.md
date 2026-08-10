@@ -56,7 +56,8 @@ Notes:
 
 Merges to `main` trigger `.github/workflows/deploy.yml` (jobs, gated on
 secrets): `gate` → `vectorize` → `workers` (deploy + `wrangler secret put`) →
-`rds` (migrations + Hyperdrive ensure) → `pages` → `smoke` → `journey`.
+`rds` (migrations + Hyperdrive ensure) → `pages` → `smoke` → `journey`, plus
+`models` (ONNX scorer artifact → R2).
 
 - Deploys are gated on secret presence; missing secrets skip their job.
 - `DATABASE_URL` is user-provisioned (AWS RDS) and proxied through
@@ -64,6 +65,57 @@ secrets): `gate` → `vectorize` → `workers` (deploy + `wrangler secret put`) 
   `workers/wrangler.toml`).
 - CI runs typecheck / lint / format / test / build on every PR and push
   (`.github/workflows/ci.yml`).
+
+### ONNX prompt-scorer model (spec §5.2)
+
+The extension loads the trained int8 scorer from Cloudflare R2 at runtime.
+One-time setup (no credentials were available to automate it):
+
+1. `npx wrangler r2 bucket create revealyst-models` (also done by the `models`
+   deploy job).
+2. Cloudflare dashboard → **R2 → revealyst-models → Settings → Public access**
+   → _Allow access to this bucket via a custom domain or r2.dev_ → copy the
+   `pub-<hash>.r2.dev` URL.
+3. Set `MODEL_BASE_URL` in `extension/src/lib/model-config.ts` to
+   `https://pub-<hash>.r2.dev/prompt-scorer-v1` and ship it.
+
+Until step 2/3 are done the model URL is a placeholder: the extension logs a
+`modelError` and scores with the rule engine (spec §7 fallback) — the product
+keeps working, only the local-model path is inert. Uploads run automatically
+on deploy (`node ml/scripts/upload.mjs`), or manually with
+`CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` set.
+
+Retraining (rule distillation until human-labeled data exists):
+
+```bash
+npm run generate:corpus -w ml          # deterministic synthetic corpus (ml/data/)
+ml/.venv/Scripts/python -m pip install -r ml/python/requirements.txt
+ml/.venv/Scripts/python ml/python/train.py --epochs 6
+ml/.venv/Scripts/python ml/python/eval.py   # MAE + latency vs rule labels
+```
+
+Artifact: `ml/models/prompt-scorer-v1/` (`model_quantized.onnx` int8, `head.json`,
+tokenizer, provenance `README.md`). The fp32 `model.onnx` and checkpoints are
+gitignored; only the int8 artifact + metadata are committed. Watch the eval
+MAE — retrain when it drifts.
+
+### North-star metrics (spec §4)
+
+`GET /api/stats` now returns an `improvement` block, defined in
+`workers/src/db/events.ts` (`personalImprovement`):
+
+- `pqs_delta_4w` — current 7-day avg score minus the 7-day avg 21-28 days
+  ago (the spec north star: PQS up ≥10 pts over 4 weeks). Null until the user
+  has data in both windows.
+- `reprompt_rate` / `reprompt_rate_prev` — share of events whose
+  `prompt_hash` was seen earlier in the last 30 days / the previous 30 days
+  (spec KPI: re-prompt rate reduction ≥30%). The extension dedupes
+  consecutive repeats, so this measures genuine re-use.
+- `active_weeks` — distinct 7-day buckets (of the last 4) with ≥1 event
+  (weekly retention signal; spec: 45% week-4 retention).
+
+The dashboard shows these in Progress → "North-star (spec §4)". Team/global
+aggregates of the same metrics are future work.
 
 ### Migrations
 

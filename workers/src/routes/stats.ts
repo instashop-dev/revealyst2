@@ -19,6 +19,16 @@ const statsResponse = z.object({
   streak_days: z.number(),
   trend: z.array(z.object({ day: z.string(), avg_score: z.number() })),
   radar: z.record(z.string(), z.number()),
+  // North-star instrumentation (spec §4): 4-week PQS lift, re-prompt rate,
+  // weekly retention. Nulls when the user has no data in the needed window.
+  improvement: z.object({
+    pqs_delta_4w: z.number().nullable(),
+    current_avg: z.number().nullable(),
+    baseline_avg: z.number().nullable(),
+    reprompt_rate: z.number().nullable(),
+    reprompt_rate_prev: z.number().nullable(),
+    active_weeks: z.number(),
+  }),
 });
 
 const route = createRoute({
@@ -47,10 +57,11 @@ statsRoutes.openapi(route, async (c) => {
   const days = period === "7d" ? 7 : 30;
   const db = await getDb(c.env);
   const repos = createRepos(db);
-  const [stats, accepted, shared] = await Promise.all([
+  const [stats, accepted, shared, improvement] = await Promise.all([
     repos.events.personalStats(c.var.userId, days),
     repos.feedback.countAccepted(c.var.userId),
     repos.library.countSharedBy(c.var.userId),
+    repos.events.personalImprovement(c.var.userId),
   ]);
   return c.json(
     {
@@ -65,6 +76,14 @@ statsRoutes.openapi(route, async (c) => {
       streak_days: stats.streakDays,
       trend: stats.trend,
       radar: stats.radar,
+      improvement: {
+        pqs_delta_4w: improvement.pqsDelta4w,
+        current_avg: improvement.currentAvg,
+        baseline_avg: improvement.baselineAvg,
+        reprompt_rate: improvement.repromptRate,
+        reprompt_rate_prev: improvement.repromptRatePrev,
+        active_weeks: improvement.activeWeeks,
+      },
     },
     200,
   );

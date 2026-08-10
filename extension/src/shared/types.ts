@@ -36,6 +36,8 @@ export interface Settings {
   /** Session token copied from the web dashboard Settings — authorises
    *  save-to-library and suggestion feedback (spec §5.1/§5.6). */
   apiToken: string;
+  /** Email of the account the apiToken belongs to (action popup display). */
+  accountEmail: string;
   /** Team the user saves library prompts into (spec §5.5 promote-to-library). */
   teamId: string;
   /** Stable per-install anonymous id — groups team trends before sign-in
@@ -49,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   apiBase: "https://revealyst-workers.thapi.workers.dev",
   platformSelectors: {},
   apiToken: "",
+  accountEmail: "",
   teamId: "",
   anonId: "",
 };

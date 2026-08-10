@@ -45,6 +45,25 @@ export interface PersonalStats {
   radar: Record<string, number>;
 }
 
+/**
+ * North-star instrumentation (spec §4): 4-week PQS lift, re-prompt rate and
+ * weekly retention, derived from the user's own (anonymised) events.
+ */
+export interface PersonalImprovement {
+  /** Current 7-day avg minus the 7-day avg 21-28 days ago. Null when either
+   *  window has no events (the user is newer than 4 weeks). */
+  pqsDelta4w: number | null;
+  currentAvg: number | null;
+  baselineAvg: number | null;
+  /** Share of events whose prompt_hash was seen earlier in the last 30 days.
+   *  The extension dedupes consecutive repeats, so this is genuine re-use. */
+  repromptRate: number | null;
+  /** Same metric for the previous 30-day window (for the reduction delta). */
+  repromptRatePrev: number | null;
+  /** Of the last 4 (7-day) buckets, how many contain ≥1 event. */
+  activeWeeks: number;
+}
+
 export function createEventsRepo(db: SqlDb) {
   return {
     async insert(event: NewPromptEvent): Promise<void> {
@@ -335,6 +354,94 @@ export function createEventsRepo(db: SqlDb) {
         streakDays: streak,
         trend,
         radar,
+      };
+    },
+
+    /**
+     * North-star metrics (spec §4) from the user's own events: the 4-week PQS
+     * lift (current 7d avg vs the 7d avg 21-28 days ago), the re-prompt rate
+     * for the current and previous 30-day windows, and active weeks out of the
+     * last 4. Computed in JS (portable across pg-mem and Postgres).
+     */
+    async personalImprovement(userId: string): Promise<PersonalImprovement> {
+      const day = 86_400_000;
+      const now = Date.now();
+      const since30 = new Date(now - 30 * day).toISOString();
+      const { rows } = await db.query<{
+        score: number | null;
+        prompt_hash: string;
+        created_at: string | Date;
+      }>(
+        "SELECT score, prompt_hash, created_at FROM prompt_events WHERE user_id = $1 AND created_at >= $2",
+        [userId, since30],
+      );
+      const ts = (v: string | Date): number =>
+        v instanceof Date ? v.getTime() : Date.parse(String(v));
+
+      // 4-week lift: average score in the current 7-day window vs the window
+      // 21-28 days ago. Both must be non-empty, else null (too new to judge).
+      const inWindow = (t: number, fromDays: number, toDays: number): boolean => {
+        const from = now - fromDays * day;
+        const to = now - toDays * day;
+        return t >= from && t < to;
+      };
+      let curSum = 0;
+      let curN = 0;
+      let baseSum = 0;
+      let baseN = 0;
+      for (const r of rows) {
+        if (r.score == null) continue;
+        const t = ts(r.created_at);
+        if (inWindow(t, 7, 0)) {
+          curSum += r.score;
+          curN += 1;
+        } else if (inWindow(t, 28, 21)) {
+          baseSum += r.score;
+          baseN += 1;
+        }
+      }
+      const currentAvg = curN > 0 ? Math.round(curSum / curN) : null;
+      const baselineAvg = baseN > 0 ? Math.round(baseSum / baseN) : null;
+      // Round once on the raw averages, not on the rounded pair (keeps the
+      // delta stable when both averages land on .5 boundaries).
+      const pqsDelta4w = curN > 0 && baseN > 0 ? Math.round(curSum / curN - baseSum / baseN) : null;
+
+      // Re-prompt rate: an event whose prompt_hash was seen earlier in the
+      // window counts as a re-prompt. Previous window: the 30 days before the
+      // current 30 days.
+      const since60 = new Date(now - 60 * day).toISOString();
+      const { rows: older } = await db.query<{
+        prompt_hash: string;
+        created_at: string | Date;
+      }>(
+        "SELECT prompt_hash, created_at FROM prompt_events WHERE user_id = $1 AND created_at >= $2 AND created_at < $3",
+        [userId, since60, since30],
+      );
+      const repeatRate = (events: Array<{ prompt_hash: string }>): number | null => {
+        if (events.length === 0) return null;
+        const seen = new Set<string>();
+        let repeated = 0;
+        for (const e of events) {
+          if (seen.has(e.prompt_hash)) repeated += 1;
+          seen.add(e.prompt_hash);
+        }
+        return Math.round((repeated / events.length) * 1000) / 1000;
+      };
+
+      // Active weeks: distinct 7-day buckets (of the last 4) with ≥1 event.
+      const active = new Set<number>();
+      for (const r of rows) {
+        const bucket = Math.floor((now - ts(r.created_at)) / (7 * day));
+        if (bucket >= 0 && bucket < 4) active.add(bucket);
+      }
+
+      return {
+        pqsDelta4w,
+        currentAvg,
+        baselineAvg,
+        repromptRate: repeatRate(rows),
+        repromptRatePrev: repeatRate(older),
+        activeWeeks: active.size,
       };
     },
   };
