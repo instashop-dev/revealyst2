@@ -154,6 +154,19 @@ security model, key decisions).
 - [ ] Optional: functional unique index on `lower(email)` to structurally dedupe users
 - [ ] Optional: DB-backed session revocation for server-side sign-out
 
+### Team invites (§5.8, post-v0.1)
+
+- **Tracked invites** — `team_invites` table (migration 005) records pending/revoked/accepted
+  invites with role, inviter, and the live magic-link jti. One pending invite per team+email
+  (re-inviting refreshes the same row).
+- **API** — `POST /api/team/invite` accepts an optional `role` (`member`/`manager`) and returns
+  `invite_id`; new `GET /api/team/invites`, `POST /api/team/invites/:id/revoke` (consumes the
+  jti, killing the link), `POST /api/team/invites/:id/resend` (rotates to a fresh link). All
+  manager-only. Verify marks the invite accepted and auto-joins the invitee with the invited role.
+- **UI** — new `TeamInvites` component (invite form with role, pending list, re-send/revoke)
+  on the Team dashboard ("Members & invites", manager view) and in Settings. Inviting an
+  existing member returns a clear 400.
+
 ## Spec-gap audit (2026-08-07, PR #21)
 
 A full spec-vs-code audit (spec §5–§7 as primary source) found and fixed:

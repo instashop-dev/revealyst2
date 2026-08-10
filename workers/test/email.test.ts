@@ -1,6 +1,12 @@
 import { createHash, createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sendMagicLinkEmail, signRequest, toAmzDate, toDateStamp } from "../src/email.js";
+import {
+  sendMagicLinkEmail,
+  sendTeamInviteEmail,
+  signRequest,
+  toAmzDate,
+  toDateStamp,
+} from "../src/email.js";
 
 // Official AWS SigV4 test suite — "get-vanilla"
 // https://docs.aws.amazon.com/general/latest/gr/signature-v4-test-suite.html
@@ -150,6 +156,26 @@ describe("sendMagicLinkEmail", () => {
     expect(body.Content.Simple.Body.Html.Data).toContain(
       "https://revealyst-web.pages.dev/auth/verify?token=abc123",
     );
+  });
+
+  it("escapes user-controlled team names in the invite email HTML", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ MessageId: "m-1" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await sendTeamInviteEmail(config, {
+      to: "user@example.com",
+      magicLink: "https://revealyst-web.pages.dev/auth/verify?token=abc123",
+      teamName: "Acme <img src=x onerror=alert(1)> & Co",
+    });
+
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
+    );
+    const html = body.Content.Simple.Body.Html.Data as string;
+    expect(html).toContain("Acme &lt;img src=x onerror=alert(1)&gt; &amp; Co");
+    expect(html).not.toContain("<img");
   });
 
   it("throws a descriptive error when SES rejects the send", async () => {

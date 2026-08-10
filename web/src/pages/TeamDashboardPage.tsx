@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BarList, TrendChart } from "../components/charts.js";
+import { TeamInvites } from "../components/TeamInvites.js";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/session.js";
 import { useTeams } from "../teams.js";
@@ -258,6 +259,13 @@ export function TeamDashboardPage() {
               Identifiable mode requires every member to opt in before individual names appear.
             </p>
           </div>
+
+          {isManager && (
+            <section className="rounded-2xl border border-zinc-200 p-6">
+              <h2 className="mb-3 text-sm font-semibold text-zinc-700">Members &amp; invites</h2>
+              <TeamInvites teamId={selectedTeamId} />
+            </section>
+          )}
         </>
       )}
 

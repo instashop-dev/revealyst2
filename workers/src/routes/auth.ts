@@ -173,15 +173,35 @@ authRoutes.openapi(routes.verify, async (c) => {
     if (!user) return c.json({ error: "invalid_token", message: "User not found" }, 401);
 
     // Team invite (spec §5.8): the magic link carries a team_id claim —
-    // verifying it auto-joins the invitee as a member.
+    // verifying it auto-joins the invitee with the invited role and settles
+    // the tracked invite row (pending → accepted). The join is gated on the
+    // invite row being pending AND its live jti matching this token, so a
+    // revoked or rotated link can never join or re-settle an invite.
     if (payload.teamId) {
+      const invite = await repos.invites.findPendingByEmail(payload.teamId, user.email);
+      const inviteValid = Boolean(
+        invite && invite.status === "pending" && invite.jti === payload.jti,
+      );
       const existing = await repos.teams.findMember(payload.teamId, user.id);
-      if (!existing) {
+      let joined = Boolean(existing);
+      if (!joined && inviteValid && invite) {
         try {
-          await repos.teams.addMember(payload.teamId, user.id);
+          await repos.teams.addMember(
+            payload.teamId,
+            user.id,
+            invite.role === "manager" ? "manager" : "member",
+          );
+          joined = true;
         } catch (err) {
           // PK race with a concurrent verify of the same invite — non-fatal.
           console.error("[auth] auto-join team failed:", err);
+        }
+      }
+      if (joined && inviteValid && invite) {
+        try {
+          await repos.invites.markAccepted(invite.id);
+        } catch (err) {
+          console.error("[auth] mark invite accepted failed:", err);
         }
       }
     }
