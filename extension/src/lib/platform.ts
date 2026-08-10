@@ -76,33 +76,32 @@ export function detectPlatform(
 }
 
 /** Find the prompt input element using the platform's resilient selectors.
- *  Prefers the visible contenteditable editor and skips hidden fallback
- *  elements (e.g. ChatGPT's screen-reader textarea). In jsdom/happy-dom there
- *  is no layout, so visibility checks are disabled there to keep unit tests
- *  deterministic. */
+ *  Selectors are consulted in priority order; within a selector's matches we
+ *  skip hidden fallback elements (e.g. ChatGPT's screen-reader textarea) and
+ *  prefer a contenteditable editor over a plain textarea. In jsdom/happy-dom
+ *  there is no layout, so visibility checks are disabled there to keep unit
+ *  tests deterministic. */
 export function findInput(doc: Document, platform: PlatformDef): HTMLElement | null {
   const hasLayout = doc.documentElement.clientWidth > 0 || doc.documentElement.clientHeight > 0;
-  const candidates: HTMLElement[] = [];
   for (const selector of platform.inputSelectors) {
+    const matches: HTMLElement[] = [];
     for (const el of doc.querySelectorAll(selector)) {
-      if (el instanceof HTMLElement && !candidates.includes(el)) candidates.push(el);
+      if (el instanceof HTMLElement && (!hasLayout || isVisibleForInput(el))) matches.push(el);
     }
+    if (matches.length === 0) continue;
+    // The contenteditable editor is the real composer; plain textareas are
+    // often invisible a11y fallbacks on modern LLM pages.
+    return matches.find((el) => el.isContentEditable) ?? matches[0] ?? null;
   }
-  const usable = candidates.filter((el) => !hasLayout || isVisibleForInput(el));
-  // The contenteditable editor is the real composer; textareas are often
-  // invisible a11y fallbacks on modern LLM pages.
-  return (
-    usable.find((el) => el.isContentEditable) ??
-    usable.find((el) => el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) ??
-    usable[0] ??
-    null
-  );
+  return null;
 }
 
 function isVisibleForInput(el: HTMLElement): boolean {
   if (typeof el.checkVisibility === "function" && !el.checkVisibility()) return false;
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return false;
+  // Some fallbacks keep a real layout box but are transparent (opacity 0).
+  if (typeof getComputedStyle === "function" && getComputedStyle(el).opacity === "0") return false;
   return true;
 }
 
