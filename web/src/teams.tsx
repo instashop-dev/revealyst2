@@ -27,7 +27,9 @@ const TeamsContext = createContext<TeamsState | undefined>(undefined);
 export function TeamsProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Start "loading" when a session exists (true on mount/login) so the team
+  // route guard never redirects before the membership list has arrived.
+  const [loading, setLoading] = useState<boolean>(() => Boolean(session));
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
