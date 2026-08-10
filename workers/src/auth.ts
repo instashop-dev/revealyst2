@@ -2,6 +2,8 @@ import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 import { SignJWT, jwtVerify } from "jose";
 import type { AppEnv } from "./env.js";
+import { getDb } from "./db.js";
+import { createRepos } from "./db/index.js";
 
 const ISSUER = "revealyst";
 const AUDIENCE = "revealyst-app";
@@ -120,3 +122,39 @@ async function resolveSession(c: Context<AppEnv>): Promise<{ authUserId: string 
     return { authUserId: null };
   }
 }
+
+/** The app creator's emails (comma-separated ADMIN_EMAILS env), normalized. */
+export function adminEmails(env: AppEnv["Bindings"]): Set<string> {
+  const emails = new Set<string>();
+  for (const raw of (env.ADMIN_EMAILS ?? "").split(",")) {
+    const email = raw.trim().toLowerCase();
+    if (email) emails.add(email);
+  }
+  return emails;
+}
+
+export function isAdminEmail(email: string, env: AppEnv["Bindings"]): boolean {
+  return adminEmails(env).has(email.trim().toLowerCase());
+}
+
+/**
+ * App-creator guard: a valid session whose user is listed in ADMIN_EMAILS.
+ * The admin identity is derived from the email — impersonated sessions (a
+ * different user's email) can never pass this guard, so an admin acting as a
+ * user cannot escalate back to admin endpoints through that session.
+ */
+export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
+  const { authUserId } = await resolveSession(c);
+  if (!authUserId) {
+    return c.json({ error: "unauthorized", message: "Missing or invalid bearer token" }, 401);
+  }
+  const db = await getDb(c.env);
+  const repos = createRepos(db);
+  const user = await repos.users.getById(authUserId);
+  if (!user || !isAdminEmail(user.email, c.env)) {
+    return c.json({ error: "forbidden", message: "App creator access only" }, 403);
+  }
+  c.set("userId", authUserId);
+  c.set("authUserId", authUserId);
+  await next();
+});

@@ -13,6 +13,8 @@ export interface WorkerEnv {
   LIBRARY_ENC_KEY: string;
   /** When truthy, magic links are returned in the API response (local dev). */
   DEV_MODE?: string;
+  /** Comma-separated emails of the app creator(s) — sole admins of the app. */
+  ADMIN_EMAILS?: string;
   /** When truthy, in-memory rate limiting is disabled (tests). */
   RATE_LIMIT_DISABLED?: string;
   /** AWS SES region for magic-link email (default "us-east-1"). */

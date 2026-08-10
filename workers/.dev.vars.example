@@ -43,6 +43,10 @@ APP_URL=http://127.0.0.1:8788
 DEV_MODE=true
 RATE_LIMIT_DISABLED=true
 
+# App creator (admin) — comma-separated emails allowed to see /api/admin/*
+# and impersonate users. Leave empty to disable the admin API entirely.
+ADMIN_EMAILS=
+
 # AWS SES — transactional email for magic links (optional for local dev;
 # required in production). The access keys are Worker secrets.
 SES_REGION=us-east-1

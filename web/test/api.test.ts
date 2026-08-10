@@ -26,10 +26,46 @@ describe("web API client", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValue(json({ token: "t", user: { id: "1", email: "a@b.com", plan: "free" } })),
+        .mockResolvedValue(
+          json({ token: "t", user: { id: "1", email: "a@b.com", plan: "free", is_admin: false } }),
+        ),
     );
     const session = await api.verifyMagicToken("tok");
     expect(session.user.email).toBe("a@b.com");
+  });
+
+  it("lists admin users with the auth header", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(json({ users: [{ id: "u1", email: "a@b.com" }], total: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await api.adminUsers("sess");
+    expect(res.total).toBe(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/admin/users`,
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
+  });
+
+  it("impersonates a user via the admin endpoint", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        json({ token: "t", user: { id: "u2", email: "x@y.com", plan: "free", is_admin: false } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const session = await api.adminImpersonate("sess", "u2");
+    expect(session.user.email).toBe("x@y.com");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/admin/impersonate`,
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("u2"),
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
   });
 
   it("loads the team dashboard with auth header and period", async () => {

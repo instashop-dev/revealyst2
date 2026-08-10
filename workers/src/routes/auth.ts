@@ -4,7 +4,7 @@ import { createRepos } from "../db/index.js";
 import { getDb } from "../db.js";
 import { sendMagicLinkEmail } from "../email.js";
 import { createRateLimiter, rateLimit } from "../rate-limit.js";
-import { requireAuth, signMagicToken, signSessionToken } from "../auth.js";
+import { requireAuth, signMagicToken, signSessionToken, isAdminEmail } from "../auth.js";
 import type { AppEnv } from "../env.js";
 
 const magicRequest = z.object({ email: z.string().email() });
@@ -21,7 +21,13 @@ const verifyLimiter = rateLimit(createRateLimiter(10, 60_000), 10);
 const lastEmailAt = new Map<string, number>();
 const RECIPIENT_COOLDOWN_MS = 60_000;
 const RECIPIENT_COOLDOWN_MAX_ENTRIES = 10_000;
-const userResponse = z.object({ id: z.string(), email: z.string(), plan: z.string() });
+const userResponse = z.object({
+  id: z.string(),
+  email: z.string(),
+  plan: z.string(),
+  /** True when this account is the app creator (ADMIN_EMAILS) — drives the Admin nav. */
+  is_admin: z.boolean().default(false),
+});
 
 const routes = {
   magic: createRoute({
@@ -188,7 +194,15 @@ authRoutes.openapi(routes.verify, async (c) => {
 
     const sessionToken = await signSessionToken(user.id, user.email, c.env.JWT_SECRET);
     return c.json(
-      { token: sessionToken, user: { id: user.id, email: user.email, plan: user.plan } },
+      {
+        token: sessionToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          plan: user.plan,
+          is_admin: isAdminEmail(user.email, c.env),
+        },
+      },
       200,
     );
   } catch {
@@ -201,5 +215,13 @@ authRoutes.openapi(routes.me, async (c) => {
   const repos = createRepos(db);
   const user = await repos.users.getById(c.var.userId);
   if (!user) return c.json({ error: "unauthorized", message: "User not found" }, 401);
-  return c.json({ id: user.id, email: user.email, plan: user.plan }, 200);
+  return c.json(
+    {
+      id: user.id,
+      email: user.email,
+      plan: user.plan,
+      is_admin: isAdminEmail(user.email, c.env),
+    },
+    200,
+  );
 });

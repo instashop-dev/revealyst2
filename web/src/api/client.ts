@@ -1,4 +1,5 @@
 import type {
+  AdminUser,
   DashboardResponse,
   HistoryResponse,
   LibraryCard,
@@ -55,6 +56,21 @@ export const api = {
 
   me(token: string): Promise<User> {
     return request("/api/auth/me", { headers: authed(token) });
+  },
+
+  // --- Admin (app creator) --------------------------------------------------
+
+  adminUsers(token: string): Promise<{ users: AdminUser[]; total: number }> {
+    return request("/api/admin/users", { headers: authed(token) });
+  },
+
+  /** App creator only: start a session as the given user (impersonation). */
+  adminImpersonate(token: string, userId: string): Promise<Session> {
+    return request("/api/admin/impersonate", {
+      method: "POST",
+      headers: authed(token),
+      body: JSON.stringify({ user_id: userId }),
+    });
   },
 
   // --- Teams -----------------------------------------------------------------

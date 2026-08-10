@@ -13,6 +13,7 @@ import { AchievementsPage } from "./pages/AchievementsPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 import { TeamDashboardPage } from "./pages/TeamDashboardPage.js";
 import { LibraryPage } from "./pages/LibraryPage.js";
+import { AdminPage } from "./pages/AdminPage.js";
 
 /**
  * /team requires a manager role in at least one team. The server 403 is the
@@ -23,6 +24,17 @@ function TeamRoute() {
   if (loading) return <p className="text-sm text-zinc-400">Checking team role…</p>;
   if (!teams.some((t) => t.role === "manager")) return <Navigate to="/progress" replace />;
   return <TeamDashboardPage />;
+}
+
+/**
+ * /admin is for the app creator only. The server 403 is the hard gate; this
+ * redirect is just the UX layer for everyone else.
+ */
+function AdminRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return <p className="text-sm text-zinc-400">Checking admin access…</p>;
+  if (user?.is_admin !== true) return <Navigate to="/progress" replace />;
+  return <AdminPage />;
 }
 
 function GuardedApp() {
@@ -46,6 +58,7 @@ function GuardedApp() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="team" element={<TeamRoute />} />
           <Route path="library" element={<LibraryPage />} />
+          <Route path="admin" element={<AdminRoute />} />
         </Route>
       </Routes>
     </TeamsProvider>

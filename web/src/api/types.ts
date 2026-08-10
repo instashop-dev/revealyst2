@@ -4,11 +4,24 @@ export interface User {
   id: string;
   email: string;
   plan: string;
+  /** True when this account is the app creator (server ADMIN_EMAILS check). */
+  is_admin: boolean;
 }
 
 export interface Session {
   token: string;
   user: User;
+}
+
+/** One row of the admin users list (app creator only). */
+export interface AdminUser {
+  id: string;
+  email: string;
+  plan: string;
+  created_at: string;
+  last_active_at: string | null;
+  events_count: number;
+  teams: Array<{ id: string; name: string; role: string }>;
 }
 
 export type TeamRole = "manager" | "member";
