@@ -38,30 +38,39 @@ function AdminRoute() {
 }
 
 function GuardedApp() {
-  const { session, loading } = useAuth();
-  if (loading)
-    return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-zinc-400">
-        Loading…
-      </div>
-    );
+  const { session } = useAuth();
   return (
-    <TeamsProvider>
-      <Routes>
-        <Route path="/auth/verify" element={<VerifyPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={session ? <AppShell /> : <Navigate to="/login" replace />}>
-          <Route index element={<Navigate to="/progress" replace />} />
-          <Route path="progress" element={<ProgressPage />} />
-          <Route path="history" element={<HistoryPage />} />
-          <Route path="achievements" element={<AchievementsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="team" element={<TeamRoute />} />
-          <Route path="library" element={<LibraryPage />} />
-          <Route path="admin" element={<AdminRoute />} />
-        </Route>
-      </Routes>
-    </TeamsProvider>
+    <Routes>
+      <Route path="/auth/verify" element={<VerifyPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/"
+        element={
+          // Render immediately from the cached session (localStorage) instead
+          // of blocking on /api/auth/me: the token is revalidated in the
+          // background by AuthProvider, and if it is invalid the session is
+          // dropped (→ login). Firing /api/teams and the page's data fetch in
+          // parallel with /api/auth/me cuts the page-load request chain from
+          // three sequential round trips to one.
+          session ? (
+            <TeamsProvider key={session.token}>
+              <AppShell />
+            </TeamsProvider>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      >
+        <Route index element={<Navigate to="/progress" replace />} />
+        <Route path="progress" element={<ProgressPage />} />
+        <Route path="history" element={<HistoryPage />} />
+        <Route path="achievements" element={<AchievementsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="team" element={<TeamRoute />} />
+        <Route path="library" element={<LibraryPage />} />
+        <Route path="admin" element={<AdminRoute />} />
+      </Route>
+    </Routes>
   );
 }
 

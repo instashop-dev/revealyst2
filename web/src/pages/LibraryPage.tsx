@@ -51,33 +51,37 @@ export function LibraryPage() {
     }
   }, [teams, selectedTeamId]);
 
-  // Reload whenever the team or any filter changes.
+  // Reload whenever the team or any filter changes. Search is debounced so
+  // typing does not fire a request per keystroke.
   useEffect(() => {
     if (!session || !selectedTeamId) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    api
-      .libraryList(session.token, selectedTeamId, {
-        search: search || undefined,
-        tag: tag || undefined,
-        minScore: minScore || undefined,
-        sort,
-      })
-      .then((res) => {
-        if (!cancelled) {
-          setCards(res.prompts);
-          setTotal(res.total);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load library");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const timer = setTimeout(() => {
+      api
+        .libraryList(session.token, selectedTeamId, {
+          search: search || undefined,
+          tag: tag || undefined,
+          minScore: minScore || undefined,
+          sort,
+        })
+        .then((res) => {
+          if (!cancelled) {
+            setCards(res.prompts);
+            setTotal(res.total);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load library");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 250);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [session?.token, selectedTeamId, search, tag, minScore, sort, refreshKey]);
 

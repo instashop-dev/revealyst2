@@ -80,10 +80,13 @@ function createPostgresDb(connectionString: string): Promise<RequestDb> {
         // string, so identifiable mode could never activate, and TEXT[] params
         // produced "malformed array literal" (pg-mem masked both in tests).
         fetch_types: true,
-        max: 1,
-        // Reuse the connection WITHIN the request (multiple queries per
-        // route); the per-request lifecycle (closeRequestDb after the
-        // response) guarantees no socket is shared across requests.
+        // Small per-request pool: routes run several queries — often
+        // concurrently (dashboard, stats, library) — and Cloudflare's
+        // Hyperdrive example uses max: 5. A single connection (max: 1) would
+        // serialize those queries into one FIFO queue, adding one round trip
+        // per query. Hyperdrive pools the underlying RDS connections, so the
+        // extra tunnel sockets are cheap.
+        max: 5,
         idle_timeout: 60,
         connect_timeout: 10,
         ...(isHyperdrive ? {} : { ssl: "require" as const }),

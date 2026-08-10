@@ -68,25 +68,39 @@ export function createTeamsRepo(db: SqlDb) {
 
     /** All teams the user belongs to, with their role in each (spec §5.5). */
     async listForUser(userId: string): Promise<Array<{ team: TeamRow; member: TeamMemberRow }>> {
-      const { rows } = await db.query<{
-        team_id: string;
-        role: string;
-        anon_alias: string | null;
-        opt_in_identifiable: boolean;
-      }>(
-        "SELECT team_id, role, anon_alias, opt_in_identifiable FROM team_members WHERE user_id = $1 ORDER BY team_id",
+      // Single JOIN — avoids the N+1 (one findById per membership) that made
+      // /api/teams pay a query round trip for every team on page load.
+      const { rows } = await db.query<
+        TeamRow & {
+          team_id: string;
+          role: string;
+          anon_alias: string | null;
+          opt_in_identifiable: boolean;
+        }
+      >(
+        `SELECT m.team_id, m.role, m.anon_alias, m.opt_in_identifiable, t.*
+         FROM team_members m
+         JOIN teams t ON t.id = m.team_id
+         WHERE m.user_id = $1 ORDER BY m.team_id`,
         [userId],
       );
-      const out: Array<{ team: TeamRow; member: TeamMemberRow }> = [];
-      for (const m of rows) {
-        const team = await this.findById(m.team_id);
-        if (!team) continue;
-        out.push({
-          team,
-          member: { ...m, user_id: userId },
-        });
-      }
-      return out;
+      return rows.map((r) => ({
+        team: {
+          id: r.id,
+          name: r.name,
+          created_by: r.created_by,
+          billing_status: r.billing_status,
+          settings: r.settings,
+          created_at: r.created_at,
+        },
+        member: {
+          team_id: r.team_id,
+          user_id: userId,
+          role: r.role,
+          anon_alias: r.anon_alias,
+          opt_in_identifiable: r.opt_in_identifiable,
+        },
+      }));
     },
 
     /** Members with their user emails (used only to derive display names in
