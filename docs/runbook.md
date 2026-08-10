@@ -77,7 +77,7 @@ Full list: `SECRETS.md`. Worker secrets are set via
 `echo "$VALUE" | npx wrangler secret put NAME` (deploy job or manually).
 GitHub secrets include `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
 `OPENAI_API_KEY`, `JWT_SECRET`, `LIBRARY_ENC_KEY`, `DATABASE_URL`,
-`AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY`.
+`AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY`, `ADMIN_EMAILS`.
 
 ## Observability
 

@@ -44,7 +44,8 @@ DEV_MODE=true
 RATE_LIMIT_DISABLED=true
 
 # App creator (admin) — comma-separated emails allowed to see /api/admin/*
-# and impersonate users. Leave empty to disable the admin API entirely.
+# and impersonate users. This is a Worker secret in production (GitHub Actions
+# secret ADMIN_EMAILS -> `wrangler secret put`); set it here only for local dev.
 ADMIN_EMAILS=
 
 # AWS SES — transactional email for magic links (optional for local dev;
