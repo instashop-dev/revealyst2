@@ -9,6 +9,7 @@ import { feedbackRoutes } from "./routes/feedback.js";
 import { teamRoutes } from "./routes/teams.js";
 import { historyRoutes } from "./routes/history.js";
 import { statsRoutes } from "./routes/stats.js";
+import { adminRoutes } from "./routes/admin.js";
 import { requestLogger } from "./logger.js";
 import { closeRequestDb, getDb } from "./db.js";
 import type { AppEnv } from "./env.js";
@@ -66,6 +67,7 @@ app.route("/", feedbackRoutes);
 app.route("/", teamRoutes);
 app.route("/", historyRoutes);
 app.route("/", statsRoutes);
+app.route("/", adminRoutes);
 
 // OpenAPI document (spec §6.4 contract) + minimal HTML docs page.
 app.doc("/api/openapi.json", {

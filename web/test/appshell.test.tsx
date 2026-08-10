@@ -9,10 +9,23 @@ const mockTeams = vi.hoisted(() => ({
   teams: [] as Team[],
 }));
 
+const mockAuth = vi.hoisted(() => ({
+  isAdmin: false,
+  impersonating: false,
+  exitImpersonation: vi.fn(),
+}));
+
 vi.mock("../src/auth/session.js", () => ({
   useAuth: () => ({
-    user: { id: "1", email: "jamie@example.com", plan: "free" },
+    user: {
+      id: "1",
+      email: "jamie@example.com",
+      plan: "free",
+      is_admin: mockAuth.isAdmin,
+    },
     logout: vi.fn(),
+    impersonating: mockAuth.impersonating,
+    exitImpersonation: mockAuth.exitImpersonation,
   }),
 }));
 
@@ -35,7 +48,11 @@ afterEach(() => {
 });
 
 describe("app shell", () => {
-  beforeEach(() => setTeams([]));
+  beforeEach(() => {
+    setTeams([]);
+    mockAuth.isAdmin = false;
+    mockAuth.impersonating = false;
+  });
 
   it("shows the Team nav to managers", () => {
     setTeams([{ id: "t1", name: "Acme", role: "manager", anonymize_identities: true }]);
@@ -61,5 +78,33 @@ describe("app shell", () => {
       expect(screen.getByText(label)).toBeTruthy();
     }
     expect(screen.queryByText("Team")).toBeNull();
+  });
+
+  it("shows the Admin nav only to the app creator", () => {
+    render(
+      <MemoryRouter>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText("Admin")).toBeNull();
+
+    mockAuth.isAdmin = true;
+    render(
+      <MemoryRouter>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Admin")).toBeTruthy();
+  });
+
+  it("shows the impersonation banner and exit button while impersonating", () => {
+    mockAuth.impersonating = true;
+    render(
+      <MemoryRouter>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/admin impersonation/i)).toBeTruthy();
+    expect(screen.getByText("Exit impersonation")).toBeTruthy();
   });
 });

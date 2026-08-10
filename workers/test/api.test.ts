@@ -55,6 +55,7 @@ async function makeEnv(): Promise<WorkerEnv> {
     LIBRARY_ENC_KEY: TEST_SECRET,
     DEV_MODE: "true",
     RATE_LIMIT_DISABLED: "true",
+    ADMIN_EMAILS: "rohan@example.com",
     VECTORIZE: {
       query: async () => ({
         matches: [
@@ -214,6 +215,105 @@ describe("auth", () => {
     const res = await app.request("/api/auth/me", authed(), env);
     expect(res.status).toBe(200);
     expect((await res.json()) as { email: string }).toMatchObject({ email: "jamie@example.com" });
+  });
+});
+
+describe("admin (app creator)", () => {
+  // rohan@example.com is the app creator (ADMIN_EMAILS); jamie is a regular user.
+  const adminAuthed = (body?: unknown) => authed(body, managerToken);
+
+  it("flags the app creator in /api/auth/me", async () => {
+    const admin = await app.request("/api/auth/me", authed(undefined, managerToken), env);
+    expect(((await admin.json()) as { is_admin: boolean }).is_admin).toBe(true);
+    const member = await app.request("/api/auth/me", authed(), env);
+    expect(((await member.json()) as { is_admin: boolean }).is_admin).toBe(false);
+  });
+
+  it("requires a session for admin endpoints", async () => {
+    const res = await app.request("/api/admin/users", {}, env);
+    expect(res.status).toBe(401);
+  });
+
+  it("blocks non-app-creators from admin endpoints", async () => {
+    const list = await app.request("/api/admin/users", authed(), env);
+    expect(list.status).toBe(403);
+    const imp = await app.request(
+      "/api/admin/impersonate",
+      authed({ user_id: managerUserId }),
+      env,
+    );
+    expect(imp.status).toBe(403);
+  });
+
+  it("lists all signed-up users with MVP details", async () => {
+    const res = await app.request("/api/admin/users", adminAuthed(), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      total: number;
+      users: Array<{
+        id: string;
+        email: string;
+        plan: string;
+        created_at: string;
+        last_active_at: string | null;
+        events_count: number;
+        teams: Array<{ id: string; name: string; role: string }>;
+      }>;
+    };
+    expect(body.total).toBeGreaterThanOrEqual(2);
+    const rohan = body.users.find((u) => u.email === "rohan@example.com");
+    expect(rohan).toBeDefined();
+    expect(rohan?.plan).toBe("free");
+    expect(rohan?.created_at).toBeTruthy();
+    expect(typeof rohan?.events_count).toBe("number");
+    expect(rohan?.teams.some((t) => t.name === "Acme Agency" && t.role === "manager")).toBe(true);
+    const jamie = body.users.find((u) => u.email === "jamie@example.com");
+    expect(jamie?.teams.some((t) => t.name === "Acme Agency" && t.role === "member")).toBe(true);
+  });
+
+  it("impersonates a user and issues a working session token", async () => {
+    const res = await app.request(
+      "/api/admin/impersonate",
+      adminAuthed({ user_id: memberUserId }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      token: string;
+      user: { id: string; email: string; is_admin: boolean };
+    };
+    expect(body.user.email).toBe("jamie@example.com");
+    expect(body.user.is_admin).toBe(false);
+
+    // The issued token is a real session for the impersonated user.
+    const me = await app.request("/api/auth/me", authed(undefined, body.token), env);
+    expect(me.status).toBe(200);
+    expect((await me.json()) as { email: string; is_admin: boolean }).toMatchObject({
+      email: "jamie@example.com",
+      is_admin: false,
+    });
+
+    // The impersonated session is not an admin session — no admin endpoints.
+    const adminList = await app.request("/api/admin/users", authed(undefined, body.token), env);
+    expect(adminList.status).toBe(403);
+  });
+
+  it("refuses to impersonate an app creator account", async () => {
+    const res = await app.request(
+      "/api/admin/impersonate",
+      adminAuthed({ user_id: managerUserId }),
+      env,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when impersonating an unknown user", async () => {
+    const res = await app.request(
+      "/api/admin/impersonate",
+      adminAuthed({ user_id: randomUUID() }),
+      env,
+    );
+    expect(res.status).toBe(404);
   });
 });
 

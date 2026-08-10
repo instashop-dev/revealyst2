@@ -31,7 +31,9 @@ RATE_LIMIT_DISABLED = "false"
 
 # Secrets (set via `wrangler secret put` or the deploy workflow):
 #   OPENAI_API_KEY, JWT_SECRET, DATABASE_URL, LIBRARY_ENC_KEY,
-#   SES_ACCESS_KEY_ID, SES_SECRET_ACCESS_KEY
+#   SES_ACCESS_KEY_ID, SES_SECRET_ACCESS_KEY, ADMIN_EMAILS
+# ADMIN_EMAILS (comma-separated app-creator emails) is a Worker secret —
+# keep it out of [vars] so it cannot shadow the deployed secret.
 
 # AWS SES — transactional email for magic links (identity: revealyst.com,
 # sending via the e.revealyst.com subdomain). SES_REGION / SES_FROM_EMAIL are
