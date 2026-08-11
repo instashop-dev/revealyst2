@@ -273,7 +273,7 @@ export async function runWeeklyDigest(
         // Sanitize before echoing into the admin summary — SES error bodies
         // can contain arbitrary upstream text; strip control chars + truncate.
         const safe = String((err as Error).message)
-          .replace(/[\u0000-\u001f\u007f]/g, " ")
+          .replace(/\p{Cc}/gu, " ")
           .trim()
           .slice(0, 300);
         const message = `team ${team.id}: ${safe || "unknown error"}`;

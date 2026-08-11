@@ -408,7 +408,7 @@ export async function sendWeeklyDigestEmail(
     // SES v2 sends subjects as a JSON field (no header injection possible),
     // but strip control characters so a crafted team name can never smuggle
     // formatting or break the subject line.
-    subject: `Revealyst weekly digest — ${email.teamName.replace(/[\r\n\u0000-\u001f\u007f]/g, " ")}`,
+    subject: `Revealyst weekly digest — ${email.teamName.replace(/\p{Cc}/gu, " ")}`,
     html: buildWeeklyDigestHtml(email),
   });
 }
