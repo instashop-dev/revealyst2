@@ -16,6 +16,9 @@ export interface SidebarProps {
   inputMissing: boolean;
   truncated: boolean;
   lastApplied: string | null;
+  /** Transient save/connect feedback (e.g. "Saved to library ⭐"), shown
+   *  separately from the suggestion "Applied:" line and auto-cleared. */
+  statusMessage: string | null;
   /** Thumbs row visibility — spec §5.1: shown after the LLM response appears. */
   thumbsVisible: boolean;
   onPauseToggle: () => void;
@@ -221,7 +224,7 @@ export function Sidebar(props: SidebarProps) {
         </div>
         {props.result?.meta.engine === "rules" && props.result.meta.modelError && (
           <p className="mt-1 text-[10px] text-amber-600" title={props.result.meta.modelError}>
-            local model unavailable · using rule engine (spec §7)
+            local model unavailable · using built-in scoring
           </p>
         )}
         <div className="mt-1 flex items-baseline gap-2">
@@ -294,6 +297,15 @@ export function Sidebar(props: SidebarProps) {
           )}
         </div>
       </section>
+
+      {props.statusMessage && (
+        <p
+          className="border-t border-zinc-100 px-1 pt-1.5 text-center text-[11px] text-zinc-600"
+          role="status"
+        >
+          {props.statusMessage}
+        </p>
+      )}
 
       <footer className="flex items-center justify-between border-t border-zinc-100 pt-2 text-[11px] text-zinc-400">
         {props.thumbsVisible ? (

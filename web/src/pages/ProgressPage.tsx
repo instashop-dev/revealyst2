@@ -107,25 +107,25 @@ export function ProgressPage() {
               <RadarChart points={radarPoints} />
             </section>
             <section className="rounded-2xl border border-zinc-200 p-6">
-              <h2 className="mb-2 text-sm font-semibold text-zinc-700">This week</h2>
+              <h2 className="mb-2 text-sm font-semibold text-zinc-700">At a glance</h2>
               <ul className="mt-3 space-y-2 text-sm text-zinc-600">
                 <li>✅ {stats.prompts_count} prompts coached</li>
                 <li>✅ {stats.green_count} green prompts (≥70)</li>
                 <li>✅ {stats.accepted_count} suggestions applied</li>
                 <li>📈 Average score: {stats.avg_score ?? "—"}</li>
-                <li>🎯 Focus: {focus ?? "keep scoring"}</li>
+                <li>🎯 Practice: {focus ?? "keep scoring"}</li>
               </ul>
               <p className="mt-4 text-xs text-zinc-400">
-                Signed in as {user?.email}. Turn on team sync in the extension to feed live data.
+                Signed in as {user?.email}. Turn on Cloud sync in the extension to feed live data.
               </p>
             </section>
           </div>
 
           <section className="rounded-2xl border border-zinc-200 p-6">
-            <h2 className="text-sm font-semibold text-zinc-700">North-star (spec §4)</h2>
+            <h2 className="text-sm font-semibold text-zinc-700">Your 4-week trend</h2>
             <div className="mt-3 grid gap-4 sm:grid-cols-3">
               <div className="rounded-xl bg-emerald-50/50 p-4">
-                <p className="text-xs text-zinc-500">4-week PQS lift</p>
+                <p className="text-xs text-zinc-500">Score change (4 weeks)</p>
                 {stats.improvement?.pqs_delta_4w == null ? (
                   <p className="mt-1 text-sm text-zinc-500">Score for 4 weeks to see your trend.</p>
                 ) : (
@@ -176,7 +176,7 @@ export function ProgressPage() {
                   {stats.improvement?.active_weeks ?? "—"}
                   <span className="text-sm font-normal text-zinc-400"> / 4</span>
                 </p>
-                <p className="mt-1 text-[10px] text-zinc-400">weekly retention signal</p>
+                <p className="mt-1 text-[10px] text-zinc-400">weeks you scored at least once</p>
               </div>
             </div>
           </section>

@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 
 export function LoginPage() {
@@ -28,6 +27,15 @@ export function LoginPage() {
         {status === "sent" ? (
           <div className="mt-6 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800">
             Link sent! Check your inbox for the magic sign-in link.
+            <p className="mt-2">
+              <button
+                type="button"
+                onClick={() => setStatus("idle")}
+                className="text-xs text-emerald-700 underline hover:text-emerald-900"
+              >
+                Did not receive it? Send again
+              </button>
+            </p>
           </div>
         ) : (
           <form onSubmit={submit} className="mt-6 flex flex-col gap-3">
@@ -50,9 +58,6 @@ export function LoginPage() {
             <p className="text-xs text-zinc-400">
               Don&apos;t have a team? You can still track your personal progress after signing in.
             </p>
-            <Link to="/" className="text-center text-xs text-emerald-600 hover:underline">
-              ← Back
-            </Link>
           </form>
         )}
       </div>

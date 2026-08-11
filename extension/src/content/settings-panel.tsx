@@ -190,7 +190,7 @@ export function SettingsPanel({
           </button>
         )}
         <p className="mt-1 text-[10px] text-zinc-400">
-          Stored only on this device — prompt snippets never sync (spec §5.7).
+          Stored only on this device — prompt snippets never sync.
         </p>
       </details>
     </div>
