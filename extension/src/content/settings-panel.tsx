@@ -79,15 +79,6 @@ export function SettingsPanel({
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-zinc-500">API base URL</span>
-        <input
-          value={apiBase}
-          onChange={(e) => setApiBase(e.target.value)}
-          className="rounded-lg border border-zinc-300 px-3 py-2 text-xs"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
         <span className="text-xs font-medium text-zinc-500">
           API token{" "}
           <span className="text-zinc-400">(from dashboard Settings → Connect the extension)</span>
@@ -152,6 +143,19 @@ export function SettingsPanel({
       >
         Save settings
       </button>
+
+      {/* Advanced: hidden from normal users, kept for local development. */}
+      <details className="text-xs text-zinc-500">
+        <summary className="cursor-pointer">Advanced</summary>
+        <label className="mt-2 flex flex-col gap-1">
+          <span className="text-[11px] font-medium text-zinc-500">API base URL</span>
+          <input
+            value={apiBase}
+            onChange={(e) => setApiBase(e.target.value)}
+            className="rounded-lg border border-zinc-300 px-2 py-1.5 font-mono text-[11px]"
+          />
+        </label>
+      </details>
 
       <details className="text-xs text-zinc-500">
         <summary className="cursor-pointer">
