@@ -150,6 +150,7 @@ async function mainUnsafe(): Promise<void> {
           // (same flow as the onboarding sample, so the user sees the loop).
           if (!input) return;
           setInputText(input, prompt);
+          input.focus();
           onInput();
           rerender();
         },

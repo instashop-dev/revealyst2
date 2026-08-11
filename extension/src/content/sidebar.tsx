@@ -4,6 +4,7 @@ import type { ScoreResult } from "@revealyst/scoring";
 import type { LocalHistoryEntry, Settings, Suggestion } from "../shared/types.js";
 import { appliedMessage, type AppliedFeedback } from "../lib/apply.js";
 import { STARTER_PROMPTS } from "../lib/templates.js";
+import { DASHBOARD_URL } from "../shared/types.js";
 import { SettingsPanel, type TeamOption } from "./settings-panel.js";
 
 export interface SidebarProps {
@@ -369,7 +370,7 @@ export function Sidebar(props: SidebarProps) {
           ⭐
         </button>
         <a
-          href="https://revealyst-web.pages.dev"
+          href={DASHBOARD_URL}
           target="_blank"
           rel="noreferrer"
           className="rounded px-1.5 py-1 font-semibold text-emerald-600 hover:bg-zinc-100"

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./popup.css";
 import { getSettings, setSettings } from "../lib/storage.js";
+import { DASHBOARD_URL } from "../shared/types.js";
 
 /**
  * Extension action popup — the entry point users see when clicking the
@@ -14,7 +15,6 @@ import { getSettings, setSettings } from "../lib/storage.js";
  * Also links to the supported sites + web dashboard.
  */
 
-const DASHBOARD_URL = "https://revealyst-web.pages.dev";
 const SETTINGS_URL = `${DASHBOARD_URL}/settings`;
 const LLM_SITES = [
   { name: "ChatGPT", url: "https://chat.openai.com/" },

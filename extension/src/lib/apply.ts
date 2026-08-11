@@ -70,10 +70,13 @@ export interface AppliedFeedback {
   after: number | null;
 }
 
-/** Human-readable line for the applied state (exported for tests). */
+/** Human-readable line for the applied state (exported for tests). The
+ *  delta is always shown once known — loop-closure feedback must not hide a
+ *  drop, only celebrate an improvement. */
 export function appliedMessage(feedback: AppliedFeedback): string {
-  if (feedback.before != null && feedback.after != null && feedback.after > feedback.before) {
+  if (feedback.before == null || feedback.after == null) return "Applied ✓";
+  if (feedback.after > feedback.before) {
     return `Score improved ${feedback.before} → ${feedback.after} 🎉`;
   }
-  return "Applied ✓";
+  return `Score ${feedback.before} → ${feedback.after}`;
 }
