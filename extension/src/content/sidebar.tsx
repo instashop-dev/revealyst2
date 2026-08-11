@@ -167,9 +167,7 @@ export function Sidebar(props: SidebarProps) {
           title="Expand Revealyst panel"
         >
           <span className="text-lg leading-none">✨</span>
-          <span className="text-[10px] font-semibold [writing-mode:vertical-rl]">
-            Revealyst
-          </span>
+          <span className="text-[10px] font-semibold [writing-mode:vertical-rl]">Revealyst</span>
         </button>
       </div>
     );

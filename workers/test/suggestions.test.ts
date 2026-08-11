@@ -59,21 +59,45 @@ describe("selectStaticPatterns", () => {
 describe("normalizeSuggestions", () => {
   it("drops self-referential 'AI prompt engineer' suggestions", () => {
     const out = normalizeSuggestions([
-      { id: "add_role", type: "add_role", text: "Define a role.", preview: "Act as an AI prompt engineer. ", action: "prepend" },
+      {
+        id: "add_role",
+        type: "add_role",
+        text: "Define a role.",
+        preview: "Act as an AI prompt engineer. ",
+        action: "prepend",
+      },
     ]);
     expect(out).toHaveLength(0);
   });
 
   it("drops placeholder previews ([role], '...')", () => {
     const out = normalizeSuggestions([
-      { id: "add_role", type: "add_role", text: "Add a role.", preview: "Act as a [role]. ", action: "prepend" },
-      { id: "add_context", type: "add_context", text: "Add context.", preview: " For context: ...", action: "append" },
+      {
+        id: "add_role",
+        type: "add_role",
+        text: "Add a role.",
+        preview: "Act as a [role]. ",
+        action: "prepend",
+      },
+      {
+        id: "add_context",
+        type: "add_context",
+        text: "Add context.",
+        preview: " For context: ...",
+        action: "append",
+      },
     ]);
     expect(out).toHaveLength(0);
   });
 
   it("dedupes near-identical suggestions and caps at 3", () => {
-    const dup = { id: "add_format", type: "add_output_format", text: "Specify a format.", preview: " Respond as a checklist.", action: "append" };
+    const dup = {
+      id: "add_format",
+      type: "add_output_format",
+      text: "Specify a format.",
+      preview: " Respond as a checklist.",
+      action: "append",
+    };
     const out = normalizeSuggestions([
       dup,
       { ...dup, id: "add_format_2" },
@@ -87,8 +111,21 @@ describe("normalizeSuggestions", () => {
 
   it("keeps clean task-appropriate suggestions", () => {
     const out = normalizeSuggestions([
-      { id: "add_role", type: "add_role", text: "Give the AI a defined expert role.", preview: "Act as a senior marketing strategist. ", action: "prepend" },
-      { id: "add_context", type: "add_context", text: "Add who it is for.", preview: " Add 2-3 sentences of background: who this is for, why you need it, and what you already know.", action: "append" },
+      {
+        id: "add_role",
+        type: "add_role",
+        text: "Give the AI a defined expert role.",
+        preview: "Act as a senior marketing strategist. ",
+        action: "prepend",
+      },
+      {
+        id: "add_context",
+        type: "add_context",
+        text: "Add who it is for.",
+        preview:
+          " Add 2-3 sentences of background: who this is for, why you need it, and what you already know.",
+        action: "append",
+      },
     ]);
     expect(out).toHaveLength(2);
   });

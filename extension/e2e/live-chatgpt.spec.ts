@@ -51,7 +51,10 @@ const test = base.extend<{ context: BrowserContext; net: NetFixture }>({
     const fixedProfile = process.env.REVEALYST_LIVE_PROFILE;
     const profileDir =
       fixedProfile ??
-      path.join(os.tmpdir(), `revealyst-live-profile-${Date.now()}-${Math.round(Math.random() * 1e6)}`);
+      path.join(
+        os.tmpdir(),
+        `revealyst-live-profile-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      );
     // Playwright's bundled Chromium: official Chrome (137+) no longer accepts
     // --load-extension, so extension e2e must use the bundled build.
     const context = await chromium.launchPersistentContext(profileDir, {
@@ -163,8 +166,17 @@ async function ensureOnboarded(page: Page) {
  *  up" interstitial; "Try it first" opens the composer without logging in. */
 async function getComposer(page: Page) {
   const tryIt = page.locator("a:has-text('Try it first')");
-  if ((await tryIt.count()) > 0 && (await tryIt.first().isVisible().catch(() => false))) {
-    await tryIt.first().click({ timeout: 10_000 }).catch(() => {});
+  if (
+    (await tryIt.count()) > 0 &&
+    (await tryIt
+      .first()
+      .isVisible()
+      .catch(() => false))
+  ) {
+    await tryIt
+      .first()
+      .click({ timeout: 10_000 })
+      .catch(() => {});
     await page.waitForTimeout(1500);
   }
   const byId = page.locator("#prompt-textarea");
@@ -645,9 +657,10 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
     const rl = page.locator("#no-auth-soft-rate-limit-dialog");
     if ((await rl.count()) > 0) {
       await page
-        .evaluate(
-          () =>
-            (document.getElementById("no-auth-soft-rate-limit-dialog") as HTMLDialogElement | null)?.close(),
+        .evaluate(() =>
+          (
+            document.getElementById("no-auth-soft-rate-limit-dialog") as HTMLDialogElement | null
+          )?.close(),
         )
         .catch(() => {});
       await page.keyboard.press("Escape").catch(() => {});

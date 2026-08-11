@@ -128,16 +128,18 @@ async function queryPatterns(
   vector: number[],
 ): Promise<PromptPattern[]> {
   const result = await vectorize.query(vector, { topK: 3, returnMetadata: "all" });
-  return (result.matches ?? [])
-    .map((match) => match.metadata as unknown as PromptPattern)
-    .filter((p) => p && typeof p.pattern_text === "string")
-    // Context patterns from the seed corpus are example sentences with invented
-    // business facts ("we are a 12-person SaaS startup"). They may inform the
-    // LLM's explanation, but their previews must never be inserted verbatim — a
-    // one-click suggestion must not claim facts about the user's company.
-    .map((p) =>
-      p.category === "add_context" && FACT_ASSERTION.test(p.preview) ? { ...p, preview: "" } : p,
-    );
+  return (
+    (result.matches ?? [])
+      .map((match) => match.metadata as unknown as PromptPattern)
+      .filter((p) => p && typeof p.pattern_text === "string")
+      // Context patterns from the seed corpus are example sentences with invented
+      // business facts ("we are a 12-person SaaS startup"). They may inform the
+      // LLM's explanation, but their previews must never be inserted verbatim — a
+      // one-click suggestion must not claim facts about the user's company.
+      .map((p) =>
+        p.category === "add_context" && FACT_ASSERTION.test(p.preview) ? { ...p, preview: "" } : p,
+      )
+  );
 }
 
 /** Detects seed-corpus context sentences that assert business facts. */

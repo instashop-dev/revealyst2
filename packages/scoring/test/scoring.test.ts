@@ -136,9 +136,9 @@ describe("examples heuristic", () => {
 
 describe("context heuristics", () => {
   it("recognises an audience without 'for' (to a client, to a 10-year-old)", () => {
-    expect(engine.scoreSync("Write an email to a client.").breakdown.context).toBeGreaterThanOrEqual(
-      50,
-    );
+    expect(
+      engine.scoreSync("Write an email to a client.").breakdown.context,
+    ).toBeGreaterThanOrEqual(50);
     expect(
       engine.scoreSync("Explain recursion to a 10-year-old.").breakdown.context,
     ).toBeGreaterThanOrEqual(50);
@@ -147,12 +147,14 @@ describe("context heuristics", () => {
     );
   });
   it("recognises a stated purpose ('asking for')", () => {
-    expect(engine.scoreSync("Write an email to my boss asking for a raise.").breakdown.context)
-      .toBeGreaterThanOrEqual(50);
+    expect(
+      engine.scoreSync("Write an email to my boss asking for a raise.").breakdown.context,
+    ).toBeGreaterThanOrEqual(50);
   });
   it("recognises hard constraints (budget, 'for 5 days')", () => {
-    expect(engine.scoreSync("Give me a meal plan for 5 days. Budget 60 euros.").breakdown.context)
-      .toBeGreaterThanOrEqual(35);
+    expect(
+      engine.scoreSync("Give me a meal plan for 5 days. Budget 60 euros.").breakdown.context,
+    ).toBeGreaterThanOrEqual(35);
   });
 });
 
