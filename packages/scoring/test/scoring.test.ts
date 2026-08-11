@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   RuleScoringEngine,
   bandFor,
+  classifyTask,
   createScoringEngine,
   flagInfo,
   scoreExamples,
@@ -80,8 +81,88 @@ describe("role-rich, well-specified prompt (spec §5.3 example shape)", () => {
   });
 });
 
-describe("missing output format", () => {
-  const result = engine.scoreSync("Explain quantum computing to me.");
+describe("task-aware coaching (PMF review)", () => {
+  it("does not coach a complete factual question", () => {
+    const r = engine.scoreSync("What is the capital of France?");
+    expect(bandFor(r.score)).toBe("green");
+    expect(r.flags).toHaveLength(0);
+  });
+
+  it("does not coach a short translation request", () => {
+    const r = engine.scoreSync("Translate this into Spanish: the meeting is at 3pm");
+    expect(bandFor(r.score)).toBe("green");
+    expect(r.flags).toHaveLength(0);
+  });
+
+  it("does not coach a short summarise request", () => {
+    const r = engine.scoreSync("Summarize the key points from these meeting notes.");
+    expect(bandFor(r.score)).toBe("green");
+    expect(r.flags).toHaveLength(0);
+  });
+
+  it("still coaches a vague generation task", () => {
+    const r = engine.scoreSync("write an email to a prospect");
+    expect(bandFor(r.score)).toBe("red");
+    expect(r.flags).toEqual(
+      expect.arrayContaining(["low_specificity", "vague_context", "missing_role", "no_examples"]),
+    );
+  });
+
+  it("does not classify a short writing task as simple", () => {
+    expect(classifyTask("write a blog post about our product")).toBe("generation");
+    expect(classifyTask("Can you help me write a blog post?")).toBe("generation");
+  });
+
+  it("floors role/format for explanatory tasks instead of nagging", () => {
+    const r = engine.scoreSync(
+      "Explain the difference between a git merge and a rebase. Assume I know basic git. Give me one concrete example of when to use each, and a rule of thumb for choosing.",
+    );
+    expect(bandFor(r.score)).toBe("green");
+    expect(r.flags).not.toContain("missing_role");
+    expect(r.flags).not.toContain("missing_output_format");
+  });
+
+  it("recognises a real analysis question as knowledge (no role/format nag)", () => {
+    const r = engine.scoreSync(
+      "Here are our numbers for the last quarter: revenue up 12%, churn flat at 4%, CAC up 30%. What should I focus on this quarter? Assume I run a 15-person agency and my goal is profitable growth.",
+    );
+    expect(bandFor(r.score)).toBe("green");
+    expect(r.flags).not.toContain("missing_role");
+    expect(r.flags).not.toContain("missing_output_format");
+  });
+
+  it("flags keyword-stuffed filler instead of rewarding it (anti-gameability)", () => {
+    const r = engine.scoreSync(
+      "Act as a wizard. Respond in JSON. For example: like this. We sell X, targeting CTOs, within budget, I need to do it for my team so that it works. Also a list, please, and markdown.",
+    );
+    // The "example" is empty filler — it must not count toward the score.
+    expect(r.flags).toContain("no_examples");
+    expect(r.breakdown.examples_included).toBeLessThan(50);
+  });
+
+  it("caps keyword-stacked context (diminishing returns)", () => {
+    const stuffed = engine.scoreSync(
+      "Act as a wizard. Respond in JSON. For example: like this. We sell X, targeting CTOs, within budget, I need to do it for my team so that it works.",
+    );
+    const contextual = engine.scoreSync(
+      "Act as a B2B sales rep. Write a cold email to a CTO at a 50-person SaaS company about our analytics tool. Include a specific benefit, keep it under 100 words, and end with a call to action. For example, mention how teams save 10 hours a week.",
+    );
+    // A genuinely contextual prompt scores at least as well as keyword soup.
+    expect(contextual.score).toBeGreaterThanOrEqual(stuffed.score);
+  });
+
+  it("gives context credit for 'assume I know/run' and 'my goal is'", () => {
+    expect(
+      engine.scoreSync("Explain this assuming I know basic Python.").breakdown.context,
+    ).toBeGreaterThanOrEqual(50);
+    expect(
+      engine.scoreSync("My goal is to raise prices without losing customers.").breakdown.context,
+    ).toBeGreaterThanOrEqual(40);
+  });
+});
+
+describe("missing output format (generation task)", () => {
+  const result = engine.scoreSync("Draft a client update.");
 
   it("flags missing_output_format and scores output_format low", () => {
     expect(result.flags).toContain("missing_output_format");
@@ -119,8 +200,13 @@ describe("examples heuristic", () => {
   it("scores 10 with no example markers", () => {
     expect(scoreExamples("Just do the thing.")).toBe(10);
   });
-  it("scores 60+ with one marker", () => {
-    expect(scoreExamples("Give feedback. For example, like this: ...")).toBeGreaterThanOrEqual(60);
+  it("scores 60+ with one substantive marker", () => {
+    expect(
+      scoreExamples("Give feedback. For example, here is a draft of what we wrote."),
+    ).toBeGreaterThanOrEqual(60);
+  });
+  it("ignores filler after a marker ('For example: like this.')", () => {
+    expect(scoreExamples("Give feedback. For example, like this: ...")).toBe(10);
   });
   it("counts a bare 'example' mention (not just fixed phrases)", () => {
     expect(scoreExamples("Include one concrete example of a customer win.")).toBeGreaterThanOrEqual(

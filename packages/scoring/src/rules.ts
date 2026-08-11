@@ -1,6 +1,7 @@
 import type { FlagName } from "./flags.js";
 import type { ScoringAdapter } from "./adapter.js";
 import type { ScoreBreakdown, ScoreResult, ScoreMeta, ScoringOptions } from "./types.js";
+import { DIMENSIONS } from "./types.js";
 
 /**
  * Deterministic, framework-free prompt scoring engine.
@@ -11,6 +12,16 @@ import type { ScoreBreakdown, ScoreResult, ScoreMeta, ScoringOptions } from "./t
  * score with fixed weights. Purely synchronous under the hood (fast,
  * guaranteed <200ms) — `score()` returns a Promise to match the ScoringAdapter
  * contract.
+ *
+ * Task awareness (PMF review): the engine first classifies the prompt as a
+ * simple request, a knowledge task, or a generation task. Simple requests
+ * ("What is the capital of France?", "Translate this to Spanish") are already
+ * complete — missing roles/formats/examples are not deficiencies, so all
+ * dimensions are floored at 70 (green). Knowledge tasks ("Explain the
+ * difference between X and Y") don't need an explicit role or output format,
+ * so those two dimensions are floored. Generation tasks ("write a blog post")
+ * are coached on all dimensions. This stops the engine from nagging users on
+ * prompts that need no coaching.
  */
 
 export const DEFAULT_MAX_TOKENS = 4000;
@@ -24,7 +35,7 @@ const CHARS_PER_TOKEN = 4;
  * rules (see OnnxScoringAdapter's rules_rev gate), so a stale model falls
  * back to the rule engine until it is retrained against the new revision.
  */
-export const RULES_REVISION = 2;
+export const RULES_REVISION = 3;
 
 const DIMENSION_WEIGHTS = {
   specificity: 0.25,
@@ -53,12 +64,83 @@ function countMatches(text: string, re: RegExp): number {
   return matches ? matches.length : 0;
 }
 
+// ---------------------------------------------------------------------------
+// Task classification (PMF review): what kind of request is this?
+// ---------------------------------------------------------------------------
+
+export type TaskKind = "simple" | "knowledge" | "generation";
+
+/** Word-count cap for a "simple request" — longer prompts are coached. */
+const SIMPLE_TASK_MAX_WORDS = 14;
+
+/** Writing/content tasks where role + output format genuinely matter. */
+const GENERATION_VERBS =
+  /\b(write|draft|create|generate|make|build|design|compose|prepare|produce|develop|craft|formulate|invent|brainstorm|plan|outline|email|post|essay|blog|script)\b/i;
+
+/** Short imperative tasks that are complete without a role or format. */
+const SIMPLE_TASK_VERBS =
+  /\b(translate|define|spell|calculate|convert|summarize|summarise|paraphrase|rephrase|proofread|correct|check|interpret|name|list|find|look up|show|explain)\b/i;
+
+/** Direct questions ("What is …?", "How does …?") are complete as-is. */
+const QUESTION_STARTERS =
+  /^(what|when|where|who|whose|whom|which|why|how|is|are|do|does|did|can|could|should|would|will)\b/i;
+
+/** Explanatory tasks don't need "Act as …" or a specified output format. */
+const KNOWLEDGE_VERBS =
+  /\b(explain|describe|summarize|summarise|analyze|analyse|compare|contrast|translate|calculate|convert|answer|review|interpret|define|evaluate|assess|discuss|elaborate|clarify|detail)\b/i;
+
+/**
+ * Classify a prompt so the scorer knows which dimensions to coach:
+ *
+ * - "simple": short question or short imperative ("What is the capital of
+ *   France?", "Translate this to Spanish"). Already complete — nothing to
+ *   coach.
+ * - "knowledge": explanation/analysis ("Explain the difference between X and
+ *   Y", a question inside a longer prompt). Role and output format are
+ *   optional, not deficiencies.
+ * - "generation": "write/draft/create …" — coached on all five dimensions.
+ */
+export function classifyTask(text: string): TaskKind {
+  const words = wordCount(text);
+  const head = text
+    .trim()
+    .replace(/^please\s+/i, "")
+    .slice(0, 120);
+  const hasGenerationVerb = GENERATION_VERBS.test(text);
+  const isShort = words <= SIMPLE_TASK_MAX_WORDS;
+
+  if (isShort && !hasGenerationVerb) {
+    if (QUESTION_STARTERS.test(text) || /\?\s*$/.test(text)) return "simple";
+    if (SIMPLE_TASK_VERBS.test(head)) return "simple";
+  }
+  if (KNOWLEDGE_VERBS.test(head) && !hasGenerationVerb) return "knowledge";
+  if (/\?/.test(text) && !hasGenerationVerb && words <= 80) return "knowledge";
+  return "generation";
+}
+
+/**
+ * Floor dimensions that don't apply to the task. The displayed breakdown and
+ * the derived flags both use the floored values, so a factual question never
+ * shows "missing role" and an explanation never nags for an output format.
+ */
+export function applyTaskFloors(breakdown: ScoreBreakdown, kind: TaskKind): ScoreBreakdown {
+  const floored = { ...breakdown };
+  if (kind === "simple") {
+    for (const dim of DIMENSIONS) floored[dim] = Math.max(floored[dim], 70);
+  } else if (kind === "knowledge") {
+    floored.role_clarity = Math.max(floored.role_clarity, 70);
+    floored.output_format = Math.max(floored.output_format, 70);
+  }
+  return floored;
+}
+
 const VAGUE_WORDS =
   /\b(thing|things|stuff|something|some|nice|good|better|great|etc\.?|basically|really|kind of|sort of|make it|do it|help me with it)\b/gi;
 
-/** Concrete signals: numbers, quantities, URLs, identifiers, proper nouns. */
+/** Concrete signals: numbers, quantities, URLs, identifiers, proper nouns
+ *  (a capitalised word mid-sentence — not the start of a sentence). */
 const CONCRETE_SIGNALS =
-  /\d+%|\$\s?\d+|\d+\s?(words|items|examples|ideas|options|points|pages|paragraphs|people|users|days|hours|months|years)|https?:\/\/\S+|@\w+|(?<![.!?]\s)[A-Z][a-z]{3,}/g;
+  /\d+%|\$\s?\d+|\d+\s?(words|items|examples|ideas|options|points|pages|paragraphs|people|users|days|hours|months|years)|https?:\/\/\S+|@\w+|(?<![.!?]\s|^)[A-Z][a-z]{3,}/g;
 
 export function scoreSpecificity(text: string): number {
   const wc = wordCount(text);
@@ -76,7 +158,8 @@ export function scoreSpecificity(text: string): number {
 }
 
 export function scoreContext(text: string): number {
-  let s = 25;
+  const s = 25;
+  const bonuses: number[] = [];
   // Audience is defined: "for/to/with my team", "to a client", "targeting
   // CTOs", "aimed at non-technical small business owners", "to a 10-year-old".
   // (Previously only "for (my|our|the|a) <audience>" was recognised, so
@@ -91,26 +174,34 @@ export function scoreContext(text: string): number {
     ) ||
     /\b(?:to|for) (?:a|an|my|our|the) \d{1,2}-?year-?olds?\b/i.test(text)
   ) {
-    s += 30;
+    bonuses.push(30);
   }
-  // Purpose is stated: "so that", "in order to", "asking for", "to draft", …
+  // Purpose is stated: "so that", "in order to", "asking for", "to draft",
+  // "give/tell/show me", "my goal is", …
   if (
     /so that|in order to|so i can|to (achieve|improve|increase|reduce|learn|understand|decide|prepare|convince|sell|explain|teach|build|design|write|create|get|ask|request|draft|plan)/i.test(
       text,
     ) ||
-    /\b(asking|hoping|looking) (for|to)\b/i.test(text)
+    /\b(asking|hoping|looking) (for|to)\b/i.test(text) ||
+    /\b(give|tell|show) me\b/i.test(text) ||
+    /\b(my|our|the) goal is\b/i.test(text)
   ) {
-    s += 20;
+    bonuses.push(20);
   }
   if (
     /\b(background|context|we (are|sell|build|work|use|need)|our (company|product|service|team)|i (am|work)|currently|as part of|for a project|we are a)\b/i.test(
       text,
+    ) ||
+    // "Assume I know basic git" / "Assume I run a 15-person agency" — a
+    // stated level or situation is real background.
+    /\bassum(?:e|ing) (i|you|we|they) (know|understand|are|have|can|run|work|sell|build|use)\b/i.test(
+      text,
     )
   ) {
-    s += 25;
+    bonuses.push(25);
   }
   if (/\b(our|the) (product|service|app|tool|company|platform|dashboard)\b/i.test(text)) {
-    s += 15;
+    bonuses.push(15);
   }
   // Hard constraints: budget, deadline, "for 5 days", "per week".
   if (
@@ -119,12 +210,21 @@ export function scoreContext(text: string): number {
     ) ||
     /\bfor \d+ (days?|weeks?|months?|people|hours?)\b/i.test(text)
   ) {
-    s += 10;
+    bonuses.push(10);
   }
   if (/^i (need|want) to/i.test(text.trim())) {
-    s += 10;
+    bonuses.push(10);
   }
-  return clamp(s);
+  // Diminishing returns (anti-gameability): the two strongest signals count
+  // in full, the rest at half, total capped at +60. Stacking every keyword no
+  // longer maxes out context — a genuinely contextual prompt does not need to.
+  const ordered = bonuses.sort((a, b) => b - a);
+  let bonus = 0;
+  ordered.forEach((b, i) => {
+    bonus += i < 2 ? b : Math.round(b / 2);
+  });
+  bonus = Math.min(bonus, 60);
+  return clamp(s + bonus);
 }
 
 const EXCLUDED_AS_PHRASES =
@@ -208,17 +308,40 @@ const EXAMPLE_MARKERS = [
   /\btemplate[:：]\b/gi,
 ];
 
+/**
+ * An example marker followed by nothing but filler ("For example: like this.",
+ * "e.g. …") is not a real example — counting it would let keyword-stuffed
+ * prompts fake the examples dimension (PMF review anti-gameability). Returns
+ * the length of the filler fragment (0 when the marker is substantive).
+ */
+function trivialFillerLen(text: string): number {
+  const m = text.match(
+    /^[^a-z0-9]{0,6}(?:like this|this|that|such|etc\.?|\.\.\.|…)[^a-z0-9]{0,4}(?:[.!?:]|$)/i,
+  );
+  return m ? m[0].length : 0;
+}
+
 export function scoreExamples(text: string): number {
   // Count fixed example phrases first and remove them, so "for example"
-  // counts once. Then a bare "example/sample" mention ("include one
-  // example", "give an example") also counts as an example signal —
-  // previously a prompt explicitly asking for an example was flagged
-  // "no_examples" because only the fixed phrases were recognised.
+  // counts once. A marker only counts when it is followed by real content
+  // (at least a short clause) — "for example: like this" is filler, not an
+  // example. Then a bare "example/sample" mention ("include one example",
+  // "give an example") also counts as an example signal.
   let t = text;
   let n = 0;
   for (const re of EXAMPLE_MARKERS) {
-    n += countMatches(t, re);
-    t = t.replace(re, " ");
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t)) !== null) {
+      const after = t.slice(m.index + m[0].length, m.index + m[0].length + 60);
+      const filler = trivialFillerLen(after);
+      if (filler === 0) n += 1;
+      // Remove the marker (and any trivial filler that follows it) so later
+      // markers can't double-count the same fragment.
+      const removeLen = m[0].length + filler;
+      t = t.slice(0, m.index) + " " + t.slice(m.index + removeLen);
+      re.lastIndex = m.index;
+    }
   }
   n += countMatches(t, /\bexamples?\b/gi);
   n += countMatches(t, /\bsamples?\b/gi);
@@ -274,13 +397,19 @@ export class RuleScoringEngine implements ScoringAdapter {
       charCount,
     };
 
-    const breakdown: ScoreBreakdown = {
+    const kind = classifyTask(scored);
+    const rawBreakdown: ScoreBreakdown = {
       specificity: scoreSpecificity(scored),
       context: scoreContext(scored),
       role_clarity: scoreRoleClarity(scored),
       output_format: scoreOutputFormat(scored),
       examples_included: scoreExamples(scored),
     };
+    // Simple requests and knowledge tasks don't need coaching on every
+    // dimension (see classifyTask) — floor the ones that don't apply so the
+    // flags, breakdown and overall score reflect what the prompt actually
+    // needs.
+    const breakdown = applyTaskFloors(rawBreakdown, kind);
 
     const flags: FlagName[] = deriveFlags(breakdown, meta);
 

@@ -23,7 +23,10 @@ export {
   scoreRoleClarity,
   scoreOutputFormat,
   scoreExamples,
+  classifyTask,
+  applyTaskFloors,
 } from "./rules.js";
+export type { TaskKind } from "./rules.js";
 export { OnnxScoringAdapter } from "./onnx-adapter.js";
 export type { OnnxModelConfig } from "./onnx-adapter.js";
 export type { ScoringAdapter } from "./adapter.js";
