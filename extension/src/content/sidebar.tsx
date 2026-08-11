@@ -21,6 +21,8 @@ export interface SidebarProps {
   statusMessage: string | null;
   /** Thumbs row visibility — spec §5.1: shown after the LLM response appears. */
   thumbsVisible: boolean;
+  /** Which thumb the user clicked (1 | -1 | 0 = not rated yet). */
+  ratedValue: 0 | 1 | -1;
   onPauseToggle: () => void;
   onCollapseToggle: () => void;
   onTrySample: () => void;
@@ -311,16 +313,22 @@ export function Sidebar(props: SidebarProps) {
         {props.thumbsVisible ? (
           <div className="flex items-center gap-1">
             <button
-              className="rounded px-1.5 py-1 hover:bg-zinc-100"
+              className={`rounded px-1.5 py-1 hover:bg-zinc-100 ${
+                props.ratedValue === 1 ? "bg-emerald-100 text-emerald-700" : ""
+              }`}
               onClick={() => props.onThumbs(1)}
               title="This prompt was helpful"
+              aria-pressed={props.ratedValue === 1}
             >
               👍
             </button>
             <button
-              className="rounded px-1.5 py-1 hover:bg-zinc-100"
+              className={`rounded px-1.5 py-1 hover:bg-zinc-100 ${
+                props.ratedValue === -1 ? "bg-red-100 text-red-700" : ""
+              }`}
               onClick={() => props.onThumbs(-1)}
               title="This prompt needs work"
+              aria-pressed={props.ratedValue === -1}
             >
               👎
             </button>
