@@ -461,14 +461,6 @@ export class RuleScoringEngine implements ScoringAdapter {
     const scored = truncated ? text.slice(0, truncateTo) : text;
     const wc = wordCount(scored);
 
-    const meta: ScoreMeta = {
-      engine: "rules",
-      truncated,
-      estimatedTokens,
-      wordCount: wc,
-      charCount,
-    };
-
     const kind = classifyTask(scored);
     const rawBreakdown: ScoreBreakdown = {
       specificity: scoreSpecificity(scored),
@@ -482,6 +474,18 @@ export class RuleScoringEngine implements ScoringAdapter {
     // flags, breakdown and overall score reflect what the prompt actually
     // needs.
     const breakdown = applyTaskFloors(rawBreakdown, kind);
+    // Report which dimensions were auto-satisfied so the sidebar can render
+    // them as "not needed" instead of a misleading green bar (PMF review).
+    const flooredDims = DIMENSIONS.filter((dim) => breakdown[dim] > rawBreakdown[dim]);
+
+    const meta: ScoreMeta = {
+      engine: "rules",
+      truncated,
+      estimatedTokens,
+      wordCount: wc,
+      charCount,
+      flooredDims: flooredDims.length > 0 ? flooredDims : undefined,
+    };
 
     const flags: FlagName[] = deriveFlags(breakdown, meta);
 

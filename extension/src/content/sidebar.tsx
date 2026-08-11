@@ -1,6 +1,6 @@
 import { bandFor } from "@revealyst/scoring";
 import { useEffect, useRef, useState } from "react";
-import type { ScoreResult } from "@revealyst/scoring";
+import type { DimensionName, ScoreResult } from "@revealyst/scoring";
 import type { LocalHistoryEntry, Settings, Suggestion } from "../shared/types.js";
 import { appliedMessage, type AppliedFeedback } from "../lib/apply.js";
 import { STARTER_PROMPTS } from "../lib/templates.js";
@@ -185,6 +185,10 @@ export function Sidebar(props: SidebarProps) {
 
   const score = props.result?.score ?? 0;
   const band = props.result ? bandFor(score) : "yellow";
+  // Task-floored dimensions (see ScoreMeta.flooredDims): rendered grey as
+  // "not needed" instead of a green bar that looks earned.
+  const result = props.result;
+  const flooredDims = new Set(result?.meta.flooredDims ?? []);
 
   return (
     <div className="flex h-full flex-col gap-3 p-4 text-sm">
@@ -244,21 +248,38 @@ export function Sidebar(props: SidebarProps) {
             {props.result ? band : "waiting for input"}
           </span>
         </div>
-        {props.result && (
+        {result && (
           <div className="mt-3 grid grid-cols-5 gap-1">
-            {Object.entries(props.result.breakdown).map(([dim, value]) => (
-              <div key={dim} title={`${DIMENSION_LABELS[dim] ?? dim}: ${value}/100`}>
-                <div className="h-1.5 rounded bg-zinc-100">
-                  <div
-                    className={`h-1.5 rounded ${BAND_COLORS[bandFor(value)]}`}
-                    style={{ width: `${value}%` }}
-                  />
+            {Object.entries(result.breakdown).map(([dim, value]) => {
+              const floored = flooredDims.has(dim as DimensionName);
+              const label = DIMENSION_LABELS[dim] ?? dim;
+              return (
+                <div
+                  key={dim}
+                  title={
+                    floored
+                      ? `${label}: not needed for this task — counted as satisfied`
+                      : `${label}: ${value}/100`
+                  }
+                >
+                  <div className="h-1.5 rounded bg-zinc-100">
+                    <div
+                      className={`h-1.5 rounded ${
+                        floored ? "bg-zinc-300" : BAND_COLORS[bandFor(value)]
+                      }`}
+                      style={{ width: `${value}%` }}
+                    />
+                  </div>
+                  <p
+                    className={`mt-0.5 truncate text-[9px] ${
+                      floored ? "text-zinc-300" : "text-zinc-400"
+                    }`}
+                  >
+                    {label}
+                  </p>
                 </div>
-                <p className="mt-0.5 truncate text-[9px] text-zinc-400">
-                  {DIMENSION_LABELS[dim] ?? dim}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
