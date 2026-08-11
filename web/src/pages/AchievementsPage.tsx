@@ -116,7 +116,7 @@ export function AchievementsPage() {
 
       {loading && <p className="text-sm text-zinc-400">Loading…</p>}
 
-      {!loading && (
+      {!loading && stats && (
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
           {BADGES.map((b) => {
             const source = statsForBadge(b, stats, weekStats);

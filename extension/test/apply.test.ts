@@ -65,9 +65,9 @@ describe("appliedMessage (one-click loop closure)", () => {
     );
   });
 
-  it("stays neutral when the score did not move", () => {
-    expect(appliedMessage({ preview: "X", before: 54, after: 54 })).toBe("Applied ✓");
-    expect(appliedMessage({ preview: "X", before: 80, after: 72 })).toBe("Applied ✓");
+  it("shows the delta even when the score did not improve (honest loop closure)", () => {
+    expect(appliedMessage({ preview: "X", before: 54, after: 54 })).toBe("Score 54 → 54");
+    expect(appliedMessage({ preview: "X", before: 80, after: 72 })).toBe("Score 80 → 72");
   });
 
   it("handles the pre-re-score state (after not yet known)", () => {

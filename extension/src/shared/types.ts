@@ -110,3 +110,6 @@ export const STORAGE_KEYS = {
   session: "revealyst:session",
   history: "revealyst:history",
 } as const;
+
+/** The hosted web dashboard (single source of truth for the URL). */
+export const DASHBOARD_URL = "https://revealyst-web.pages.dev";
