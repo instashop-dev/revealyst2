@@ -355,6 +355,38 @@ describe("too short prompt", () => {
   });
 });
 
+describe("score trust fixes (PMF review, rev 5)", () => {
+  it("coaches an ultra-short prompt instead of flooring it green with too_short", () => {
+    // "What?" previously classified as "simple" → floored green 70 while also
+    // carrying the too_short flag — a visible contradiction ("70 green" next to
+    // "too short" coaching). It must be coached like any other thin prompt.
+    const r = engine.scoreSync("What?");
+    expect(bandFor(r.score)).not.toBe("green");
+    expect(r.flags).toContain("too_short");
+    expect(r.flags).toContain("vague_context");
+  });
+
+  it("does not give role credit for 'as an example/option' filler", () => {
+    // "Use this as an example" matched /as an? / and painted the role bar
+    // green, suppressing the missing_role coaching (the exclusion list only
+    // covered "as a …" phrases).
+    expect(scoreRoleClarity("Use this as an example.")).toBeLessThan(50);
+    expect(scoreRoleClarity("Treat this as an option.")).toBeLessThan(50);
+    const r = engine.scoreSync("Use this as an example.");
+    expect(r.flags).toContain("missing_role");
+  });
+
+  it("still gives role credit for a genuine 'as an' role phrase", () => {
+    expect(scoreRoleClarity("As an experienced recruiter, review this.")).toBe(85);
+  });
+
+  it("keeps a real short question green (not caught by the too-short guard)", () => {
+    const r = engine.scoreSync("What is the capital of France?");
+    expect(bandFor(r.score)).toBe("green");
+    expect(r.flags).toHaveLength(0);
+  });
+});
+
 describe("determinism", () => {
   it("produces identical results for identical input", () => {
     const prompt = "Help me write something good.";

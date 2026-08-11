@@ -38,8 +38,15 @@ const CHARS_PER_TOKEN = 4;
  * Rev 4: business-genre task kind (email/memo/report no longer nag for a role
  * or examples when specific) + vague-object detection ("explain this code to
  * me" is coached instead of floored to green).
+ *
+ * Rev 5: trust fixes. (a) Too-short prompts (fewer than 20 chars) are never
+ * classified "simple", so "What?" no longer scores a floored green 70 while
+ * carrying the too_short flag — it is coached like any other thin prompt.
+ * (b) "as a/an" role credit no longer fires on filler phrases like "as an
+ * example" or "as an option" (previously only "as a …" phrases were
+ * excluded), so "Use this as an example" stops painting the role bar green.
  */
-export const RULES_REVISION = 4;
+export const RULES_REVISION = 5;
 
 const DIMENSION_WEIGHTS = {
   specificity: 0.25,
@@ -109,15 +116,18 @@ const KNOWLEDGE_VERBS =
  * - "generation": "write/draft/create …" — coached on all five dimensions.
  */
 export function classifyTask(text: string): TaskKind {
-  const words = wordCount(text);
-  const head = text
-    .trim()
-    .replace(/^please\s+/i, "")
-    .slice(0, 120);
-  const hasGenerationVerb = GENERATION_VERBS.test(text);
+  const trimmed = text.trim();
+  const words = wordCount(trimmed);
+  const head = trimmed.replace(/^please\s+/i, "").slice(0, 120);
+  const hasGenerationVerb = GENERATION_VERBS.test(trimmed);
   const isShort = words <= SIMPLE_TASK_MAX_WORDS;
+  // A prompt this short cannot be judged complete: "What?" is not a finished
+  // request, and flooring it to a green 70 while also flagging too_short is a
+  // contradiction users notice (score 70 "green" + "too short" coaching).
+  // Such prompts fall through to knowledge/generation and get real coaching.
+  const tooShort = trimmed.length < 20;
 
-  if (isShort && !hasGenerationVerb) {
+  if (isShort && !hasGenerationVerb && !tooShort) {
     // A short request whose object is a vague referent ("explain this code to
     // me", "summarize this") is NOT complete — the object is underspecified,
     // so it must not be floored to green. "Translate this into Spanish" is
@@ -290,7 +300,7 @@ export function scoreContext(text: string): number {
 }
 
 const EXCLUDED_AS_PHRASES =
-  /as a (result|whole|rule|way|means|team|company|part|first step|second step|start|last resort)/i;
+  /as a (result|whole|rule|way|means|team|company|part|first step|second step|start|last resort|follow-up)|as an? (example|examples|option|alternative|reference|input|output|well|though|usual|follow-up)/i;
 
 export function scoreRoleClarity(text: string): number {
   if (/act as (a|an)/i.test(text)) return 100;
