@@ -54,6 +54,22 @@ test.describe("Revealyst sidebar (mock ChatGPT page)", () => {
     await expect(host.getByTitle("This prompt needs work")).toBeVisible();
   });
 
+  test("sidebar collapses to a slim tab and expands back (spec §5.1)", async ({ page }) => {
+    await page.goto("/chatgpt.html");
+    const host = page.locator("#revealyst-sidebar-host");
+    await expect(host).toBeAttached({ timeout: 15_000 });
+    await host.getByText("Got it — start coaching").click();
+
+    // Collapse → the scoring panel is replaced by a slim expand tab.
+    await host.getByTitle("Collapse the panel to a slim tab").click();
+    await expect(host).toContainText("Revealyst");
+    await expect(host.getByText("Prompt Quality Score")).not.toBeVisible();
+
+    // Expand → the full panel is back.
+    await host.getByTitle("Expand Revealyst panel").click();
+    await expect(host.getByText("Prompt Quality Score")).toBeVisible();
+  });
+
   test("settings panel opens; save-to-library explains missing config (spec §5.6)", async ({
     page,
   }) => {

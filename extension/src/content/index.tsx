@@ -57,7 +57,14 @@ async function mainUnsafe(): Promise<void> {
   // delayed by input polling; inputMissing flips when the poll ends) ------
   const host = document.createElement("div");
   host.id = "revealyst-sidebar-host";
-  host.style.cssText = "position:fixed;top:0;right:0;height:100vh;width:300px;z-index:2147483000;";
+  const applyHostWidth = () => {
+    // Collapsible panel (spec §5.1 user controls): a slim tab when collapsed
+    // so the overlay never permanently covers ~22% of the LLM chat.
+    host.style.cssText = `position:fixed;top:0;right:0;height:100vh;width:${
+      settings.sidebarCollapsed ? "40px" : "300px"
+    };z-index:2147483000;`;
+  };
+  applyHostWidth();
   const shadow = host.attachShadow({ mode: "open" });
   const styleEl = document.createElement("style");
   styleEl.textContent = styles; // Tailwind, scoped inside the shadow DOM
@@ -97,6 +104,13 @@ async function mainUnsafe(): Promise<void> {
         thumbsVisible,
         localHistory: [...localHistory],
         onPauseToggle: () => void togglePause(),
+        onCollapseToggle: () => {
+          void setSettings({ sidebarCollapsed: !settings.sidebarCollapsed }).then((s) => {
+            settings.sidebarCollapsed = s.sidebarCollapsed;
+            applyHostWidth();
+            rerender();
+          });
+        },
         onApply: (s) => applySuggestionToInput(s),
         onThumbs: (rating) => void recordRating(rating),
         onSaveToLibrary: () => void saveCurrentToLibrary(),
@@ -114,6 +128,7 @@ async function mainUnsafe(): Promise<void> {
         onSaveSettings: (patch) => {
           void setSettings(patch).then((s) => {
             Object.assign(settings, s);
+            applyHostWidth();
             rerender();
           });
         },

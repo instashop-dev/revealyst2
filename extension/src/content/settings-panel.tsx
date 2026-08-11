@@ -135,7 +135,7 @@ export function SettingsPanel({
           className="h-4 w-4"
         />
         <span className="text-xs text-zinc-600">
-          Team sync (scores + hashes only — privacy-first)
+          Cloud sync (scores + hashes only — privacy-first)
         </span>
       </label>
 

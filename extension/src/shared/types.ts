@@ -43,6 +43,8 @@ export interface Settings {
   /** Stable per-install anonymous id — groups team trends before sign-in
    *  while keeping the identity private (spec §5.5 pseudonyms). */
   anonId: string;
+  /** Sidebar collapsed to a slim tab (persisted; user can restore anytime). */
+  sidebarCollapsed: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   accountEmail: "",
   teamId: "",
   anonId: "",
+  sidebarCollapsed: false,
 };
 
 export interface OnboardingState {

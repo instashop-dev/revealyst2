@@ -17,6 +17,7 @@ export interface SidebarProps {
   /** Thumbs row visibility — spec §5.1: shown after the LLM response appears. */
   thumbsVisible: boolean;
   onPauseToggle: () => void;
+  onCollapseToggle: () => void;
   onApply: (suggestion: Suggestion) => void;
   onThumbs: (rating: 1 | -1) => void;
   onSaveToLibrary: () => void;
@@ -44,7 +45,6 @@ const BAND_COLORS: Record<string, string> = {
 
 export function Sidebar(props: SidebarProps) {
   const listRef = useRef<HTMLDivElement>(null);
-  const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
@@ -107,6 +107,25 @@ export function Sidebar(props: SidebarProps) {
     );
   }
 
+  // Collapsed: a slim tab so the panel never permanently covers the chat.
+  // Restore with one click (spec §5.1 user controls).
+  if (props.settings.sidebarCollapsed) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <button
+          onClick={props.onCollapseToggle}
+          className="flex flex-col items-center gap-2 rounded-lg px-1 py-2 text-emerald-700 hover:bg-emerald-50"
+          title="Expand Revealyst panel"
+        >
+          <span className="text-lg leading-none">✨</span>
+          <span className="text-[10px] font-semibold [writing-mode:vertical-rl]">
+            Revealyst
+          </span>
+        </button>
+      </div>
+    );
+  }
+
   const score = props.result?.score ?? 0;
   const band = props.result ? bandFor(score) : "yellow";
 
@@ -128,6 +147,13 @@ export function Sidebar(props: SidebarProps) {
             title={props.settings.paused ? "Resume scoring" : "Pause scoring"}
           >
             {props.settings.paused ? "Paused" : "Pause"}
+          </button>
+          <button
+            className="rounded px-1.5 py-1 text-sm hover:bg-zinc-100"
+            onClick={props.onCollapseToggle}
+            title="Collapse the panel to a slim tab"
+          >
+            ▸
           </button>
           <button
             className="rounded px-1.5 py-1 text-sm hover:bg-zinc-100"
@@ -251,23 +277,9 @@ export function Sidebar(props: SidebarProps) {
         <button
           className={`rounded px-1.5 py-1 ${props.settings.cloudSync ? "text-emerald-600" : ""}`}
           onClick={() => props.onCloudSyncToggle(!props.settings.cloudSync)}
-          title={props.settings.cloudSync ? "Team sync on" : "Team sync off (privacy-first)"}
+          title={props.settings.cloudSync ? "Cloud sync on" : "Cloud sync off (privacy-first)"}
         >
-          {props.settings.cloudSync ? "Team sync: on" : "Team sync: off"}
-        </button>
-        {copied ? <span className="text-emerald-600">copied</span> : null}
-        <button
-          className="rounded px-1.5 py-1 hover:bg-zinc-100"
-          onClick={() => {
-            void navigator.clipboard.writeText(
-              props.result ? JSON.stringify(props.result, null, 2) : "",
-            );
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-          title="Copy score JSON"
-        >
-          ⧉
+          {props.settings.cloudSync ? "Cloud sync: on" : "Cloud sync: off"}
         </button>
       </footer>
     </div>

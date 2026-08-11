@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/* Revealyst action popup — extension page, so Tailwind preflight is safe
+   here (unlike the shadow-DOM sidebar on LLM pages). */
+html {
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
