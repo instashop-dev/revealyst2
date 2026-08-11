@@ -1,5 +1,4 @@
 import type { ScoreEventPayload, SuggestionResponse } from "../shared/types.js";
-import { sha256Hex } from "../lib/hash.js";
 
 /** Error carrying the HTTP status so callers can branch (e.g. retry without team). */
 export class ApiHttpError extends Error {
@@ -147,5 +146,3 @@ export async function verifyMagicToken(
   const body = (await res.json()) as { token: string; user?: { email?: string } };
   return { token: body.token, email: body.user?.email ?? "" };
 }
-
-export { sha256Hex };

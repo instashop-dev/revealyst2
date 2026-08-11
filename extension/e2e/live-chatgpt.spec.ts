@@ -275,7 +275,7 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
     // Onboarding shows on a fresh profile; if it is already done, skip.
     await dismissOnboarding(page);
     await expect(host).toContainText("Prompt Quality Score", { timeout: 15_000 });
-    await expect(host).toContainText("Team sync: off");
+    await expect(host).toContainText("Cloud sync: off");
 
     // Content script must have found the real ChatGPT composer.
     await expect(await getComposer(page)).toBeVisible({ timeout: 30_000 });
@@ -430,8 +430,8 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
 
     // Turn on cloud sync through the UI, then score a prompt.
     const host = page.locator(HOST);
-    await host.getByTitle("Team sync off (privacy-first)").click();
-    await expect(host).toContainText("Team sync: on");
+    await host.getByTitle("Cloud sync off (privacy-first)").click();
+    await expect(host).toContainText("Cloud sync: on");
     await typePrompt(page, "persistence check prompt");
     await blurComposer(page);
     await waitForScore(page);
@@ -445,7 +445,7 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForTimeout(4000);
     await expect(page.locator(HOST)).toBeAttached({ timeout: 30_000 });
-    await expect(page.locator(HOST)).toContainText("Team sync: on", { timeout: 15_000 });
+    await expect(page.locator(HOST)).toContainText("Cloud sync: on", { timeout: 15_000 });
 
     const after = await extStorage(context);
     expect(settingsOf(after).cloudSync).toBe(true);
@@ -543,8 +543,8 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
 
     // Enable cloud sync so events fire.
     const host = page.locator(HOST);
-    await host.getByTitle("Team sync off (privacy-first)").click();
-    await expect(host).toContainText("Team sync: on");
+    await host.getByTitle("Cloud sync off (privacy-first)").click();
+    await expect(host).toContainText("Cloud sync: on");
 
     const marker = `REVEALYST_PRIVACY_MARKER_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     const prompt = `${marker} Write a short paragraph about privacy-first prompt analytics.`;

@@ -70,15 +70,8 @@ export const PLATFORMS: PlatformDef[] = [
 ];
 
 /** Detect the platform for a URL, honouring user-provided selector overrides. */
-export function detectPlatform(
-  url: string,
-  overrides: Record<string, string> = {},
-): PlatformDef | undefined {
-  const base = PLATFORMS.find((p) => p.urlPattern.test(url));
-  if (!base) return undefined;
-  const override = overrides[base.id];
-  if (!override) return base;
-  return { ...base, inputSelectors: [override, ...base.inputSelectors] };
+export function detectPlatform(url: string): PlatformDef | undefined {
+  return PLATFORMS.find((p) => p.urlPattern.test(url));
 }
 
 /** Find the prompt input element using the platform's resilient selectors.
