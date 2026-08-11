@@ -92,7 +92,8 @@ export const CLIENT_TIPS: Suggestion[] = [
     id: "add_context",
     type: "add_context",
     text: "Add who it is for, why you need it, and what you already know.",
-    preview: " For context: this is for my team, and I need it to plan next week.",
+    preview:
+      " Add 2-3 sentences of background: who this is for, why you need it, and what you already know.",
     action: "append",
   },
 ];

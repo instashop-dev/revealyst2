@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { describeDeficiency, selectStaticPatterns } from "../src/suggestions.js";
+import {
+  describeDeficiency,
+  normalizeSuggestions,
+  selectStaticPatterns,
+} from "../src/suggestions.js";
 
 describe("describeDeficiency", () => {
   it("describes a single deficiency (spec §7: embedding query text)", () => {
@@ -41,5 +45,51 @@ describe("selectStaticPatterns", () => {
     const picked = selectStaticPatterns(["missing_role"]);
     expect(picked[0]?.category).toBe("add_role");
     expect(picked[0]?.priority).toBe(1);
+  });
+
+  it("never inserts fabricated business facts in static context previews", () => {
+    const picked = selectStaticPatterns(["vague_context"]);
+    for (const p of picked) {
+      expect(p.preview).not.toMatch(/\b(we|our|i) (are|have|sell|launched|want|need)\b/i);
+      expect(p.preview).not.toMatch(/\[|\]|\.\.\.|…/);
+    }
+  });
+});
+
+describe("normalizeSuggestions", () => {
+  it("drops self-referential 'AI prompt engineer' suggestions", () => {
+    const out = normalizeSuggestions([
+      { id: "add_role", type: "add_role", text: "Define a role.", preview: "Act as an AI prompt engineer. ", action: "prepend" },
+    ]);
+    expect(out).toHaveLength(0);
+  });
+
+  it("drops placeholder previews ([role], '...')", () => {
+    const out = normalizeSuggestions([
+      { id: "add_role", type: "add_role", text: "Add a role.", preview: "Act as a [role]. ", action: "prepend" },
+      { id: "add_context", type: "add_context", text: "Add context.", preview: " For context: ...", action: "append" },
+    ]);
+    expect(out).toHaveLength(0);
+  });
+
+  it("dedupes near-identical suggestions and caps at 3", () => {
+    const dup = { id: "add_format", type: "add_output_format", text: "Specify a format.", preview: " Respond as a checklist.", action: "append" };
+    const out = normalizeSuggestions([
+      dup,
+      { ...dup, id: "add_format_2" },
+      { id: "a", type: "x", text: "t1", preview: " p1", action: "prepend" },
+      { id: "b", type: "y", text: "t2", preview: " p2", action: "prepend" },
+      { id: "c", type: "z", text: "t3", preview: " p3", action: "prepend" },
+      { id: "d", type: "w", text: "t4", preview: " p4", action: "prepend" },
+    ]);
+    expect(out.map((s) => s.preview)).toEqual([" Respond as a checklist.", " p1", " p2"]);
+  });
+
+  it("keeps clean task-appropriate suggestions", () => {
+    const out = normalizeSuggestions([
+      { id: "add_role", type: "add_role", text: "Give the AI a defined expert role.", preview: "Act as a senior marketing strategist. ", action: "prepend" },
+      { id: "add_context", type: "add_context", text: "Add who it is for.", preview: " Add 2-3 sentences of background: who this is for, why you need it, and what you already know.", action: "append" },
+    ]);
+    expect(out).toHaveLength(2);
   });
 });

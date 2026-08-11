@@ -53,7 +53,6 @@ export const ROLES = [
   "a competitive analyst",
   "an SQL analyst",
   "a spreadsheet expert",
-  "an AI prompt engineer",
   "a chatbot designer",
   "an API documentation writer",
   "a developer advocate",

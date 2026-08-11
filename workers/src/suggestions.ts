@@ -36,8 +36,20 @@ Each suggestion must have exactly these string fields:
 - "id": a kebab-case stable id (e.g. "add_role", "add_output_format")
 - "type": the pattern category (e.g. "add_role")
 - "text": a short human explanation of what to add and why
-- "preview": the exact text that will be inserted into the user's prompt (no placeholders, ready to paste)
+- "preview": the exact text that will be inserted into the user's prompt (ready to paste)
 - "action": one of "prepend", "append", "insert"
+
+Quality rules — follow them strictly:
+- Never suggest the role "AI prompt engineer" or any role about prompt-writing itself.
+  Pick roles real workers use: marketer, writer, sales rep, support agent, analyst,
+  designer, developer, coach, and similar.
+- Never invent facts about the user: no company names, products, metrics, budgets,
+  audiences, or "we/our" assertions. For background/context fixes, insert a neutral
+  imperative instruction such as "Add 2-3 sentences of background: who this is for, why
+  you need it, and what you already know." instead of asserting made-up details.
+- Each preview fixes exactly one deficiency. Do not merge two patterns into one preview.
+- Previews must contain no placeholders (no "[role]", "[...]", "...", or "your X").
+- Do not return duplicate or near-identical suggestions.
 Return only valid JSON, nothing else.`;
 
 /**
@@ -118,8 +130,19 @@ async function queryPatterns(
   const result = await vectorize.query(vector, { topK: 3, returnMetadata: "all" });
   return (result.matches ?? [])
     .map((match) => match.metadata as unknown as PromptPattern)
-    .filter((p) => p && typeof p.pattern_text === "string");
+    .filter((p) => p && typeof p.pattern_text === "string")
+    // Context patterns from the seed corpus are example sentences with invented
+    // business facts ("we are a 12-person SaaS startup"). They may inform the
+    // LLM's explanation, but their previews must never be inserted verbatim — a
+    // one-click suggestion must not claim facts about the user's company.
+    .map((p) =>
+      p.category === "add_context" && FACT_ASSERTION.test(p.preview) ? { ...p, preview: "" } : p,
+    );
 }
+
+/** Detects seed-corpus context sentences that assert business facts. */
+const FACT_ASSERTION =
+  /\b(we|our|i) (are|have|sell|launched|operate|serve|target|see|want|need|already|recently)\b/i;
 
 async function generateSuggestions(
   patterns: PromptPattern[],
@@ -153,10 +176,12 @@ async function generateSuggestions(
   return normalizeSuggestions(parsed.suggestions);
 }
 
-function normalizeSuggestions(raw: unknown): Suggestion[] {
+/** Normalise raw LLM output into valid suggestions (exported for tests). */
+export function normalizeSuggestions(raw: unknown): Suggestion[] {
   if (!Array.isArray(raw)) return [];
   const out: Suggestion[] = [];
-  for (const item of raw.slice(0, 3)) {
+  const seen = new Set<string>();
+  for (const item of raw.slice(0, 6)) {
     if (typeof item !== "object" || item === null) continue;
     const r = item as Record<string, unknown>;
     const id = typeof r.id === "string" ? r.id : "suggestion";
@@ -168,7 +193,25 @@ function normalizeSuggestions(raw: unknown): Suggestion[] {
         ? r.action
         : "prepend";
     if (!text || !preview) continue;
+    // Deterministic guards on top of the LLM prompt: never surface
+    // self-referential prompt-engineering roles, placeholder previews, or
+    // duplicate suggestions.
+    if (/prompt engineer|prompt-writing/i.test(`${text} ${preview}`)) continue;
+    if (
+      preview.includes("[") ||
+      preview.includes("]") ||
+      preview.includes("{") ||
+      preview.includes("}") ||
+      preview.includes("...") ||
+      preview.includes("…")
+    ) {
+      continue;
+    }
+    const key = preview.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
     out.push({ id, type, text, preview, action });
+    if (out.length >= 3) break;
   }
   return out;
 }
@@ -225,7 +268,8 @@ export const GENERIC_TIPS: Suggestion[] = [
     id: "add_context",
     type: "add_context",
     text: "Add who it is for, why you need it, and what you already know.",
-    preview: " For context: this is for my team, and I need it to plan next week.",
+    preview:
+      " Add 2-3 sentences of background: who this is for, why you need it, and what you already know.",
     action: "append",
   },
 ];
@@ -304,7 +348,8 @@ export const STATIC_PATTERNS: PromptPattern[] = [
     id: "p_ctx_1",
     category: "add_context",
     pattern_text: "Add background so the AI understands the situation.",
-    preview: " For context: we are a small SaaS team and this is for our weekly newsletter.",
+    preview:
+      " Add 2-3 sentences of background: who this is for, why you need it, and what you already know.",
     fixes_flags: ["vague_context", "missing_context"],
     priority: 1,
   },
@@ -312,7 +357,7 @@ export const STATIC_PATTERNS: PromptPattern[] = [
     id: "p_ctx_2",
     category: "add_context",
     pattern_text: "Name the audience you are writing for.",
-    preview: " This is aimed at non-technical small business owners.",
+    preview: " This is aimed at a specific audience — say who they are and what they already know.",
     fixes_flags: ["vague_context", "missing_context"],
     priority: 2,
   },
@@ -320,7 +365,7 @@ export const STATIC_PATTERNS: PromptPattern[] = [
     id: "p_ctx_3",
     category: "add_context",
     pattern_text: "State the goal so the answer fits its purpose.",
-    preview: " My goal is to convince the reader to sign up for a free trial.",
+    preview: " State the goal: what decision or outcome you want the answer to drive.",
     fixes_flags: ["vague_context", "missing_context"],
     priority: 3,
   },
@@ -328,7 +373,7 @@ export const STATIC_PATTERNS: PromptPattern[] = [
     id: "p_ctx_4",
     category: "add_context",
     pattern_text: "Mention what you already know or have tried.",
-    preview: " We already tested two versions and want a third angle.",
+    preview: " Mention what you already know or have tried, so the answer builds on it.",
     fixes_flags: ["vague_context"],
     priority: 4,
   },
