@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   describeDeficiency,
+  isSafeStaticPreview,
   normalizeSuggestions,
   selectStaticPatterns,
 } from "../src/suggestions.js";
@@ -59,6 +60,25 @@ describe("selectStaticPatterns", () => {
       expect(p.preview).not.toMatch(/\b(we|our|i) (are|have|sell|launched|want|need)\b/i);
       expect(p.preview).not.toMatch(/\[|\]|\.\.\.|…/);
     }
+  });
+
+  it("never inserts invented topics or fake examples in specificity/example previews", () => {
+    // Regression: p_spec_3 used to invent a topic ("onboarding flows"),
+    // p_ex_1/p_ex_3 fabricated a concrete example, p_ex_2 used "..." placeholders.
+    for (const flags of [["low_specificity"], ["no_examples"]]) {
+      for (const p of selectStaticPatterns(flags)) {
+        expect(p.preview).not.toMatch(/onboarding|blog post|Turn every prompt/i);
+        expect(p.preview).not.toMatch(/\[|\]|\{|\}|\.\.\.|…/);
+        expect(p.preview).not.toMatch(/\b(we|our|i) (are|have|sell|launched|want|need)\b/i);
+      }
+    }
+  });
+
+  it("drops unsafe previews at the selection gate (defense in depth)", () => {
+    expect(isSafeStaticPreview(" Add 2-3 sentences of background.")).toBe(true);
+    expect(isSafeStaticPreview(" Example input: ... / output: ... ")).toBe(false);
+    expect(isSafeStaticPreview(" Respond as a [format].")).toBe(false);
+    expect(isSafeStaticPreview(" For context: our trial conversion is low.")).toBe(false);
   });
 });
 
