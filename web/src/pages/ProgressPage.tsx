@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { RadarChart, TrendChart } from "../components/charts.js";
+import { GetStarted } from "../components/GetStarted.js";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/session.js";
 import type { StatsResponse } from "../api/types.js";
@@ -81,14 +82,7 @@ export function ProgressPage() {
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {loading && <p className="text-sm text-zinc-400">Loading…</p>}
 
-      {!loading && !error && !hasData && (
-        <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
-          No data yet. To feed this dashboard: click the Revealyst toolbar icon → connect your
-          account (or paste your token), then open the sidebar Settings (⚙️) and turn on{" "}
-          <b>Cloud sync</b>. Only scores and prompt hashes sync — prompt text never leaves your
-          device.
-        </p>
-      )}
+      {!loading && !error && !hasData && <GetStarted />}
 
       {!loading && !error && hasData && stats && (
         <>

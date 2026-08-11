@@ -186,25 +186,6 @@ export function SettingsPage() {
             {tokenCopied ? "Copied ✓" : "Copy token"}
           </button>
         </div>
-        {teams.length > 0 && (
-          <div className="mt-4">
-            <p className="text-xs text-zinc-500">
-              Team IDs — paste the one you want to save prompts into:
-            </p>
-            <ul className="mt-2 space-y-1 text-xs">
-              {teams.map((t) => (
-                <li key={t.id} className="flex flex-wrap items-center gap-2">
-                  <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-600">
-                    {t.id}
-                  </code>
-                  <span className="text-zinc-500">
-                    {t.name} ({t.role})
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </section>
 
       <section className="rounded-2xl border border-zinc-200 p-6">
