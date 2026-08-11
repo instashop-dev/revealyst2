@@ -59,6 +59,13 @@ export const api = {
     return request("/api/auth/me", { headers: authed(token) });
   },
 
+  // --- Account -----------------------------------------------------------------
+
+  /** Erase the account and all synced data (Settings → "Delete my data"). */
+  deleteAccount(token: string): Promise<{ success: boolean }> {
+    return request("/api/account", { method: "DELETE", headers: authed(token) });
+  },
+
   // --- Admin (app creator) --------------------------------------------------
 
   adminUsers(token: string): Promise<{ users: AdminUser[]; total: number }> {

@@ -192,4 +192,18 @@ describe("web API client", () => {
       "Only managers can view the dashboard",
     );
   });
+
+  it("deletes the account with a DELETE request and the auth header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await api.deleteAccount("sess");
+    expect(res.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE}/api/account`,
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({ Authorization: "Bearer sess" }),
+      }),
+    );
+  });
 });

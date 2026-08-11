@@ -20,6 +20,7 @@ export function SettingsPage() {
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
+  const [deleteStatus, setDeleteStatus] = useState<string | null>(null);
 
   const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
   const isManager = selectedTeam?.role === "manager";
@@ -118,14 +119,21 @@ export function SettingsPage() {
     }
   }
 
-  function deleteData() {
+  async function deleteData() {
+    if (!session) return;
     if (!window.confirm("Delete all synced data? This cannot be undone.")) return;
-    logout();
-    // logout() navigates away (session cleared); surface the follow-up note
-    // before the redirect so users know where the rest of their data lives.
-    window.alert(
-      "Synced data removed from this browser. Extension-local history is cleared in the extension Settings.",
-    );
+    setDeleteStatus("Deleting…");
+    try {
+      await api.deleteAccount(session.token);
+      // The account is gone server-side; clear the local session and land on
+      // the login page.
+      logout();
+      window.alert(
+        "Your account and all synced data were deleted. Extension-local history is cleared in the extension Settings.",
+      );
+    } catch (err) {
+      setDeleteStatus(err instanceof Error ? err.message : "Delete failed. Please try again.");
+    }
   }
 
   function copyToken() {
@@ -336,6 +344,7 @@ export function SettingsPage() {
         >
           Delete my data
         </button>
+        {deleteStatus && <span className="ml-2 text-sm text-red-600">{deleteStatus}</span>}
         <p className="mt-3 text-xs text-zinc-400">
           Export combines your cloud history and stats. Deleting your data removes synced scores,
           events and library entries. Cloud sync state and extension-local history are controlled in
