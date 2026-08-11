@@ -21,24 +21,34 @@ exists. Swap the artifact + retrain when real labels arrive.
 
 - Training data: `ml/data/corpus.jsonl` (6000) + `eval.jsonl` (1500), seed 42.
   Synthetic prompts; labels from the rule engine (see `ml/src/generate-corpus.ts`).
+- **Rules revision:** `rules_rev: 4` — business-genre task kind (emails/memos/
+  reports with an audience no longer nag for a role or examples) + vague-object
+  detection ("explain this code to me" is coached, not floored green). See
+  `packages/scoring/src/rules.ts`.
 - Base model: `sentence-transformers/all-MiniLM-L6-v2` (license: MIT).
 - Architecture: MiniLM encoder → masked **mean pool** (identical to
   Transformers.js `pooling: "mean"`) → linear 6-output head → sigmoid.
-- Training: up to 6 epochs, batch 16, lr 2e-05, AdamW, warmup 10%, MSE
-  regression, early stop patience 3, best checkpoint by eval MAE, CPU, seed 42
-  (`ml/python/train.py`). Final: mean MAE 2.71 pts, overall 2.01 pts (train-time).
+- Training: 6 epochs, batch 16, lr 2e-05, AdamW, warmup 10%, MSE regression,
+  best checkpoint by eval MAE, CPU, seed 42 (`ml/python/train.py`). Final:
+  mean MAE 3.77 pts, overall 2.59 pts (train-time).
 - Export: `torch.onnx.export` (legacy exporter, opset 14) + onnxruntime
   dynamic int8 quantization (`ml/python/export_onnx.py`).
 
 ## Eval (production path, eval split, 0-100 scale)
 
-- Python (onnxruntime int8 + head): MAE overall **1.72**, mean **2.92**;
-  Pearson r **0.996**; latency median **3.7 ms**, p95 7.1 ms.
+- Python (onnxruntime int8 + head): MAE overall **2.49**, mean **3.81**;
+  Pearson r **0.991**; latency median **3.5 ms**, p95 7.0 ms.
 - Node (the real adapter — Transformers.js + `OnnxScoringAdapter`,
-  `ml/scripts/verify-node.mjs`, 1500 prompts): MAE all dims **2.89**,
-  overall **1.67**; 8.2 ms/prompt; 1500/1500 onnx results, no rule fallback.
+  `ml/scripts/verify-node.mjs`, 200 prompts): MAE all dims **3.87**,
+  overall **2.51**; 9.3 ms/prompt; onnx results, no rule fallback.
 - Sizes: `model_quantized.onnx` 23.0 MB, `model.onnx` 91.0 MB,
   `head.json` 0.05 MB, `tokenizer.json` 0.71 MB.
+
+Note: MAE is a few points higher than the rev-1 model — the rev-4 rules
+(business floors, vague-object coaching) are more nuanced than the original
+heuristics and the synthetic corpus only partially exercises them. Correlation
+is still 0.99, and the revision gate (below) guarantees a stale head can never
+override the current rules.
 
 ## Rules of thumb
 
@@ -49,6 +59,6 @@ exists. Swap the artifact + retrain when real labels arrive.
 - **Revision gate:** `head.json` carries `rules_rev`, which must equal
   `RULES_REVISION` in `packages/scoring/src/rules.ts`. The adapter rejects a
   stale head (falls back to rules) so an old distillation can never override
-  current heuristics. This artifact is `rules_rev: 1` (trained on the original
-  rules); retrain against the current rules (train.py writes `rules_rev: 2`)
-  and upload the new head before the model path is used again.
+  current heuristics. This artifact is `rules_rev: 4`, matching the current
+  rules. Retrain whenever `RULES_REVISION` changes and upload the new head
+  before the model path is used again.

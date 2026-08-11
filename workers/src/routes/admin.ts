@@ -4,6 +4,7 @@ import { createRepos } from "../db/index.js";
 import { getDb } from "../db.js";
 import { isAdminEmail, requireAdmin, signSessionToken } from "../auth.js";
 import { runWeeklyDigest } from "../digest.js";
+import { createRateLimiter, rateLimit } from "../rate-limit.js";
 import type { AppEnv } from "../env.js";
 
 const errorResponse = z.object({ error: z.string(), message: z.string() });
@@ -152,6 +153,11 @@ adminRoutes.openapi(impersonateRoute, async (c) => {
   );
 });
 
+// A compromised admin session must not be able to flood every manager with
+// SES mail — cap on-demand digest runs (once per 5 minutes is plenty for a
+// manual trigger; the weekly cron is separate and rate-unbounded).
+const digestLimiter = rateLimit(createRateLimiter(1, 300_000), 1);
+
 const digestResponse = z.object({
   teams: z.number(),
   emails: z.number(),
@@ -164,7 +170,7 @@ const digestResponse = z.object({
 const digestRoute = createRoute({
   method: "post",
   path: "/api/admin/digest",
-  middleware: [requireAdmin],
+  middleware: [requireAdmin, digestLimiter],
   responses: {
     200: {
       content: { "application/json": { schema: digestResponse } },
