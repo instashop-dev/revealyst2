@@ -54,16 +54,31 @@ export async function getLocalHistory(): Promise<LocalHistoryEntry[]> {
   return Array.isArray(history) ? history : [];
 }
 
+/**
+ * Merge a new score into the in-memory history list. Re-scores of the same
+ * prompt (debounce flush, suggestion apply) must NOT create duplicate rows —
+ * the head entry is updated in place instead (score/flags refresh, the
+ * original timestamp and any thumbs rating are kept). The list is capped at
+ * MAX_LOCAL_HISTORY.
+ */
+export function mergeLocalHistory(
+  history: LocalHistoryEntry[],
+  entry: LocalHistoryEntry,
+): LocalHistoryEntry[] {
+  const last = history[0];
+  if (last && last.prompt === entry.prompt && last.platform === entry.platform) {
+    return [
+      { ...entry, createdAt: last.createdAt, rating: entry.rating ?? last.rating },
+      ...history.slice(1),
+    ].slice(0, MAX_LOCAL_HISTORY);
+  }
+  return [entry, ...history].slice(0, MAX_LOCAL_HISTORY);
+}
+
 export async function appendLocalHistory(entry: LocalHistoryEntry): Promise<void> {
   const history = await getLocalHistory();
   // De-dupe consecutive identical prompts (typing/score refreshes).
-  const last = history[0];
-  if (last && last.prompt === entry.prompt && last.platform === entry.platform) {
-    history[0] = { ...entry, createdAt: last.createdAt, rating: entry.rating ?? last.rating };
-  } else {
-    history.unshift(entry);
-  }
-  await write(STORAGE_KEYS.history, history.slice(0, MAX_LOCAL_HISTORY));
+  await write(STORAGE_KEYS.history, mergeLocalHistory(history, entry));
 }
 
 /** Record a thumbs rating against the most recent matching local entry. */
