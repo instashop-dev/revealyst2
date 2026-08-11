@@ -191,7 +191,7 @@ export function normalizeSuggestions(raw: unknown): Suggestion[] {
     const id = typeof r.id === "string" ? r.id : "suggestion";
     const type = typeof r.type === "string" ? r.type : id;
     const text = typeof r.text === "string" ? r.text : "";
-    const preview = typeof r.preview === "string" ? r.preview : "";
+    let preview = typeof r.preview === "string" ? r.preview : "";
     const action: SuggestionAction =
       r.action === "prepend" || r.action === "append" || r.action === "insert"
         ? r.action
@@ -205,6 +205,12 @@ export function normalizeSuggestions(raw: unknown): Suggestion[] {
     // pipeline cannot know — never surface it (the neutral imperative is the
     // only acceptable context fix).
     if (/for context[:：]?\s+(we|our|i|my|the team)\b/i.test(preview)) continue;
+    // Seed patterns combine a role with a format ("Act as X and respond as
+    // Y"); keep only the role so one click fixes exactly one deficiency.
+    // Preserve any leading space (append-style previews rely on it) and
+    // finish the stripped preview with a period.
+    preview = preview.replace(/\s+and respond as\b.*$/i, "").replace(/\s+$/, "");
+    if (preview && !/[.!?]$/.test(preview)) preview += ".";
     if (
       preview.includes("[") ||
       preview.includes("]") ||

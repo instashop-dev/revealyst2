@@ -103,6 +103,19 @@ describe("normalizeSuggestions", () => {
     expect(out).toHaveLength(0);
   });
 
+  it("strips a merged format suffix so one click fixes one deficiency", () => {
+    const out = normalizeSuggestions([
+      {
+        id: "add_role",
+        type: "add_role",
+        text: "Add a role.",
+        preview: "Act as a public speaking coach and respond as an abstract.",
+        action: "prepend",
+      },
+    ]);
+    expect(out[0]?.preview).toBe("Act as a public speaking coach.");
+  });
+
   it("dedupes near-identical suggestions and caps at 3", () => {
     const dup = {
       id: "add_format",
@@ -114,12 +127,12 @@ describe("normalizeSuggestions", () => {
     const out = normalizeSuggestions([
       dup,
       { ...dup, id: "add_format_2" },
-      { id: "a", type: "x", text: "t1", preview: " p1", action: "prepend" },
-      { id: "b", type: "y", text: "t2", preview: " p2", action: "prepend" },
-      { id: "c", type: "z", text: "t3", preview: " p3", action: "prepend" },
-      { id: "d", type: "w", text: "t4", preview: " p4", action: "prepend" },
+      { id: "a", type: "x", text: "t1", preview: " p1.", action: "prepend" },
+      { id: "b", type: "y", text: "t2", preview: " p2.", action: "prepend" },
+      { id: "c", type: "z", text: "t3", preview: " p3.", action: "prepend" },
+      { id: "d", type: "w", text: "t4", preview: " p4.", action: "prepend" },
     ]);
-    expect(out.map((s) => s.preview)).toEqual([" Respond as a checklist.", " p1", " p2"]);
+    expect(out.map((s) => s.preview)).toEqual([" Respond as a checklist.", " p1.", " p2."]);
   });
 
   it("keeps clean task-appropriate suggestions", () => {
