@@ -29,6 +29,7 @@ export function LibraryPage() {
   const [versionsById, setVersionsById] = useState<Record<string, LibraryVersion[]>>({});
   const [openVersions, setOpenVersions] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [sendOpenFor, setSendOpenFor] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editTags, setEditTags] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -96,9 +97,14 @@ export function LibraryPage() {
     }
   }
 
-  async function sendToLlm(id: string) {
+  async function sendToLlm(id: string, platform: "chatgpt" | "claude" | "gemini") {
     await copyPrompt(id);
-    window.open("https://chatgpt.com/", "_blank", "noopener,noreferrer");
+    const urls = {
+      chatgpt: "https://chatgpt.com/",
+      claude: "https://claude.ai/",
+      gemini: "https://gemini.google.com/",
+    };
+    window.open(urls[platform], "_blank", "noopener,noreferrer");
   }
 
   async function toggleVersions(id: string) {
@@ -418,12 +424,25 @@ export function LibraryPage() {
                   Copy to clipboard
                 </button>
                 <button
-                  onClick={() => void sendToLlm(card.id)}
+                  onClick={() => setSendOpenFor(sendOpenFor === card.id ? null : card.id)}
                   className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
-                  title="Copies the prompt and opens ChatGPT"
+                  title="Copies the prompt and opens your chosen LLM"
                 >
-                  Send to LLM
+                  Send to LLM {sendOpenFor === card.id ? "▲" : "▼"}
                 </button>
+                {sendOpenFor === card.id && (
+                  <div className="flex gap-1.5">
+                    {(["chatgpt", "claude", "gemini"] as const).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => void sendToLlm(card.id, p)}
+                        className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-200"
+                      >
+                        {p === "chatgpt" ? "ChatGPT" : p === "claude" ? "Claude" : "Gemini"}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <button
                   onClick={() => void toggleVersions(card.id)}
                   className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
