@@ -295,6 +295,9 @@ async function mainUnsafe(): Promise<void> {
   }
 
   function applySuggestionToInput(suggestion: Suggestion): void {
+    // Advisory suggestions have no insertable preview (the engine cannot
+    // know the user's task) — nothing to apply.
+    if (suggestion.advisory || !suggestion.preview) return;
     if (!isEditable(input)) return;
     lastApplied = suggestion.preview;
     applySuggestion(input, suggestion);

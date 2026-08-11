@@ -10,6 +10,9 @@ export interface Suggestion {
   text: string;
   preview: string;
   action: SuggestionAction;
+  /** Advisory suggestions carry coaching text but no auto-inserted preview
+   *  (the engine cannot know the user's task, so it never fabricates one). */
+  advisory?: boolean;
 }
 
 export interface PromptPattern {
@@ -38,11 +41,17 @@ Each suggestion must have exactly these string fields:
 - "text": a short human explanation of what to add and why
 - "preview": the exact text that will be inserted into the user's prompt (ready to paste)
 - "action": one of "prepend", "append", "insert"
+- "advisory": false unless the rule below says otherwise
 
 Quality rules — follow them strictly:
-- Never suggest the role "AI prompt engineer" or any role about prompt-writing itself.
-  Pick roles real workers use: marketer, writer, sales rep, support agent, analyst,
-  designer, developer, coach, and similar.
+- NEVER invent a role. You do not know the user's task, so a guessed role
+  ("Act as a QA specialist", "You are a marketer") is fake advice. When the
+  prompt is missing role clarity, return the advisory role suggestion:
+  {"id": "add_role", "type": "add_role", "text": "Say what perspective the
+  AI should take — for example the role, the reader, or the goal you want the
+  response to serve.", "preview": "", "action": "append", "advisory": true}
+  (empty preview, advisory true — the sidebar shows it without an Apply
+  button; the user completes the role themselves).
 - Never invent facts about the user: no company names, products, metrics, budgets,
   audiences, or "we/our" assertions. Never output "For context:" followed by a
   specific claim. For background/context fixes, insert a neutral imperative
@@ -82,8 +91,19 @@ export async function getSuggestions(flags: string[], env: WorkerEnv): Promise<S
     console.error(
       `[suggestions] vectorize+llm failed, using static fallback: ${(error as Error).message ?? error}`,
     );
-    const suggestions = selectStaticPatterns(deficiencies).map(patternToSuggestion);
-    return { suggestions: suggestions.length > 0 ? suggestions : GENERIC_TIPS, source: "static" };
+    let suggestions = selectStaticPatterns(deficiencies).map(patternToSuggestion);
+    if (suggestions.length === 0) {
+      // Nothing matched: a missing role is coached by the advisory suggestion
+      // (the engine never fabricates a role); anything else gets the generic
+      // tips.
+      suggestions = deficiencies.includes("missing_role") ? [ROLE_SUGGESTION] : GENERIC_TIPS;
+    } else if (
+      deficiencies.includes("missing_role") &&
+      !suggestions.some((s) => s.id === "add_role")
+    ) {
+      suggestions = [...suggestions, ROLE_SUGGESTION].slice(0, 3);
+    }
+    return { suggestions, source: "static" };
   }
 }
 
@@ -180,6 +200,21 @@ async function generateSuggestions(
   return normalizeSuggestions(parsed.suggestions);
 }
 
+/**
+ * The engine never sees the prompt text (privacy-first), so it cannot know
+ * what role fits the user's task. A guessed role ("Act as a QA specialist")
+ * is fake advice — the honest fix is an advisory suggestion the user
+ * completes themselves.
+ */
+export const ROLE_SUGGESTION: Suggestion = {
+  id: "add_role",
+  type: "add_role",
+  text: "Say what perspective the AI should take — for example the role, the reader, or the goal you want the response to serve.",
+  preview: "",
+  action: "append",
+  advisory: true,
+};
+
 /** Normalise raw LLM output into valid suggestions (exported for tests). */
 export function normalizeSuggestions(raw: unknown): Suggestion[] {
   if (!Array.isArray(raw)) return [];
@@ -196,10 +231,25 @@ export function normalizeSuggestions(raw: unknown): Suggestion[] {
       r.action === "prepend" || r.action === "append" || r.action === "insert"
         ? r.action
         : "prepend";
-    if (!text || !preview) continue;
+    // Role suggestions are ALWAYS advisory: the engine does not know the
+    // user's task, so a fabricated role is never inserted. Replace any
+    // role-typed output with the fixed advisory suggestion (defense in depth
+    // on top of the LLM system prompt).
+    if (/role|persona|act as|you are (a|an)/i.test(`${type} ${id}`)) {
+      const key = `advisory:${ROLE_SUGGESTION.id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(ROLE_SUGGESTION);
+      }
+      continue;
+    }
+    if (!text) continue;
+    // Advisory suggestions (empty preview) are allowed; everything else must
+    // have an insertable preview.
+    if (preview === "" && !r.advisory) continue;
     // Deterministic guards on top of the LLM prompt: never surface
-    // self-referential prompt-engineering roles, placeholder previews, or
-    // duplicate suggestions.
+    // self-referential prompt-engineering suggestions, placeholder previews,
+    // or duplicate suggestions.
     if (/prompt engineer|prompt-writing/i.test(`${text} ${preview}`)) continue;
     // A "For context: <claim>" insertion asserts facts about the user that the
     // pipeline cannot know — never surface it (the neutral imperative is the
@@ -264,13 +314,7 @@ function patternToSuggestion(pattern: PromptPattern): Suggestion {
 }
 
 export const GENERIC_TIPS: Suggestion[] = [
-  {
-    id: "add_role",
-    type: "add_role",
-    text: 'Give the AI a role to anchor its expertise, e.g. "Act as a senior copywriter."',
-    preview: "Act as a senior copywriter. ",
-    action: "prepend",
-  },
+  ROLE_SUGGESTION,
   {
     id: "add_output_format",
     type: "add_output_format",
@@ -294,38 +338,10 @@ export const GENERIC_TIPS: Suggestion[] = [
  * embeddings over ~5,000 seeded patterns in Vectorize (see vectorize/).
  */
 export const STATIC_PATTERNS: PromptPattern[] = [
-  {
-    id: "p_role_1",
-    category: "add_role",
-    pattern_text: "Give the AI a defined expert role before the task.",
-    preview: "Act as a senior marketing strategist. ",
-    fixes_flags: ["missing_role"],
-    priority: 1,
-  },
-  {
-    id: "p_role_2",
-    category: "add_role",
-    pattern_text: "Frame the AI as a specialist with clear responsibilities.",
-    preview: "You are a meticulous copy editor. ",
-    fixes_flags: ["missing_role"],
-    priority: 2,
-  },
-  {
-    id: "p_role_3",
-    category: "add_role",
-    pattern_text: "Add a persona that matches the audience you are writing for.",
-    preview: "As a B2B sales coach, ",
-    fixes_flags: ["missing_role"],
-    priority: 3,
-  },
-  {
-    id: "p_role_4",
-    category: "add_role",
-    pattern_text: "Assign a role and a goal in one sentence.",
-    preview: "Act as a data analyst and summarize the key insight. ",
-    fixes_flags: ["missing_role"],
-    priority: 4,
-  },
+  // Role patterns are deliberately absent from the static set: the engine
+  // cannot know the user's task, so a fabricated role ("Act as a senior
+  // marketing strategist") is fake advice. The advisory ROLE_SUGGESTION is
+  // used instead when nothing else matches (see selectStaticPatterns).
   {
     id: "p_format_1",
     category: "add_output_format",

@@ -277,12 +277,14 @@ export function Sidebar(props: SidebarProps) {
           {props.suggestions.map((s) => (
             <div key={s.id} className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-2">
               <p className="text-xs text-zinc-700">{s.text}</p>
-              <button
-                className="mt-1.5 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                onClick={() => props.onApply(s)}
-              >
-                Apply
-              </button>
+              {!s.advisory && (
+                <button
+                  className="mt-1.5 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                  onClick={() => props.onApply(s)}
+                >
+                  Apply
+                </button>
+              )}
             </div>
           ))}
           {props.lastApplied && (

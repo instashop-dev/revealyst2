@@ -483,7 +483,9 @@ describe("suggestion", () => {
     };
     expect(body.source).toBe("vectorize+llm");
     expect(body.suggestions[0]?.id).toBe("add_role");
-    expect(body.suggestions[0]?.preview).toContain("Act as");
+    // Role coaching is advisory — the engine never fabricates a role.
+    expect(body.suggestions[0]?.preview).toBe("");
+    expect(body.suggestions[0]?.preview).not.toContain("Act as");
   });
 
   it("infers deficiencies from a score breakdown when flags are absent", async () => {
