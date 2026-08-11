@@ -44,10 +44,13 @@ Quality rules — follow them strictly:
   Pick roles real workers use: marketer, writer, sales rep, support agent, analyst,
   designer, developer, coach, and similar.
 - Never invent facts about the user: no company names, products, metrics, budgets,
-  audiences, or "we/our" assertions. For background/context fixes, insert a neutral
-  imperative instruction such as "Add 2-3 sentences of background: who this is for, why
-  you need it, and what you already know." instead of asserting made-up details.
-- Each preview fixes exactly one deficiency. Do not merge two patterns into one preview.
+  audiences, or "we/our" assertions. Never output "For context:" followed by a
+  specific claim. For background/context fixes, insert a neutral imperative
+  instruction such as "Add 2-3 sentences of background: who this is for, why
+  you need it, and what you already know." instead.
+- Each preview fixes exactly one deficiency. If a pattern combines a role and a
+  format ("Act as X and respond as Y"), keep only the role — never append a
+  second format.
 - Previews must contain no placeholders (no "[role]", "[...]", "...", or "your X").
 - Do not return duplicate or near-identical suggestions.
 Return only valid JSON, nothing else.`;
@@ -71,6 +74,9 @@ export async function getSuggestions(flags: string[], env: WorkerEnv): Promise<S
     const suggestions = await withRetry(() =>
       generateSuggestions(patterns, deficiencies, env.OPENAI_API_KEY),
     );
+    // Deterministic guards can drop fabricated/placeholder output; if nothing
+    // usable survives, degrade to the static set instead of showing nothing.
+    if (suggestions.length === 0) throw new Error("no usable suggestions");
     return { suggestions, source: "vectorize+llm" };
   } catch (error) {
     console.error(
@@ -133,18 +139,14 @@ async function queryPatterns(
       .map((match) => match.metadata as unknown as PromptPattern)
       .filter((p) => p && typeof p.pattern_text === "string")
       // Context patterns from the seed corpus are example sentences with invented
-      // business facts ("we are a 12-person SaaS startup"). They may inform the
-      // LLM's explanation, but their previews must never be inserted verbatim — a
-      // one-click suggestion must not claim facts about the user's company.
-      .map((p) =>
-        p.category === "add_context" && FACT_ASSERTION.test(p.preview) ? { ...p, preview: "" } : p,
-      )
+      // business facts ("we are a 12-person SaaS startup", "our trial conversion
+      // is low"). They may inform the LLM's explanation, but their previews must
+      // never be inserted verbatim — a one-click suggestion must not claim facts
+      // about the user's company. Blanking the preview (not the pattern_text)
+      // forces the LLM to generate the neutral background instruction instead.
+      .map((p) => (p.category === "add_context" ? { ...p, preview: "" } : p))
   );
 }
-
-/** Detects seed-corpus context sentences that assert business facts. */
-const FACT_ASSERTION =
-  /\b(we|our|i) (are|have|sell|launched|operate|serve|target|see|want|need|already|recently)\b/i;
 
 async function generateSuggestions(
   patterns: PromptPattern[],
@@ -199,6 +201,10 @@ export function normalizeSuggestions(raw: unknown): Suggestion[] {
     // self-referential prompt-engineering roles, placeholder previews, or
     // duplicate suggestions.
     if (/prompt engineer|prompt-writing/i.test(`${text} ${preview}`)) continue;
+    // A "For context: <claim>" insertion asserts facts about the user that the
+    // pipeline cannot know — never surface it (the neutral imperative is the
+    // only acceptable context fix).
+    if (/for context[:：]?\s+(we|our|i|my|the team)\b/i.test(preview)) continue;
     if (
       preview.includes("[") ||
       preview.includes("]") ||

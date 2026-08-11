@@ -90,6 +90,19 @@ describe("normalizeSuggestions", () => {
     expect(out).toHaveLength(0);
   });
 
+  it("drops previews that assert invented business facts", () => {
+    const out = normalizeSuggestions([
+      {
+        id: "add_context",
+        type: "add_context",
+        text: "Add context.",
+        preview: " Respond as a checklist. For context: our trial conversion is low.",
+        action: "append",
+      },
+    ]);
+    expect(out).toHaveLength(0);
+  });
+
   it("dedupes near-identical suggestions and caps at 3", () => {
     const dup = {
       id: "add_format",
