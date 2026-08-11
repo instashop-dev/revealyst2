@@ -53,10 +53,12 @@ export function AchievementsPage() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [weekStats, setWeekStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
+    setLoadError(null);
     // 30d drives the long-term badges; 7d powers the spec §5.8 "first week"
     // mini-challenge (5 green prompts).
     Promise.all([api.stats(session.token, "30d"), api.stats(session.token, "7d")])
@@ -66,8 +68,11 @@ export function AchievementsPage() {
           setWeekStats(week);
         }
       })
-      .catch(() => {
-        if (!cancelled) setStats(null);
+      .catch((err) => {
+        if (!cancelled) {
+          setStats(null);
+          setLoadError(err instanceof Error ? err.message : "Could not load achievements.");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -112,7 +117,11 @@ export function AchievementsPage() {
         </div>
       )}
 
-      {!loading && !stats && (
+      {!loading && loadError && (
+        <p className="text-sm text-red-600">Could not load achievements: {loadError}</p>
+      )}
+
+      {!loading && !loadError && !stats && (
         <p className="text-sm text-zinc-500">
           Score prompts with the extension to start unlocking achievements.
         </p>

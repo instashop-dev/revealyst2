@@ -164,7 +164,7 @@ export function SettingsPage() {
           this API token under <b>Connect with token</b>. Then open the sidebar Settings (⚙️), pick
           your team, and turn on <b>Cloud sync</b> — that&apos;s what sends scores to this dashboard
           and the team analytics. Only scores, flags and prompt hashes sync; the token only
-          authorises signed requests, no prompt text is transmitted by entering it (spec §5.7).
+          authorises signed requests — no prompt text is transmitted by entering it.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
@@ -212,7 +212,7 @@ export function SettingsPage() {
         <p className="mt-3 text-sm text-zinc-600">
           Cloud sync is controlled in the <b>extension&apos;s Settings panel</b> — the web dashboard
           cannot reach chrome.storage. Only scores and prompt hashes leave your device when sync is
-          on (privacy-first, spec §5.7).
+          on (privacy-first).
         </p>
       </section>
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/session.js";
 
 /** Handles ?token= from the emailed magic link: verify → session → redirect. */
@@ -17,13 +17,21 @@ export function VerifyPage() {
     }
     login(token)
       .then(() => navigate("/progress", { replace: true }))
-      .catch(() => setError("This link is invalid or expired. Request a new one."));
+      .catch(() => setError("This link is invalid or expired."));
   }, [params, login, navigate]);
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</p>
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="rounded-lg bg-red-50 p-4 text-center text-sm text-red-700">
+          <p>{error}</p>
+          <Link
+            to="/login"
+            className="mt-2 inline-block text-xs font-semibold text-red-600 underline hover:text-red-800"
+          >
+            Request a new sign-in link
+          </Link>
+        </div>
       </div>
     );
   }

@@ -87,6 +87,8 @@ async function mainUnsafe(): Promise<void> {
   let suggestionSource: "vectorize+llm" | "static" | null = null;
   let busy = false;
   let lastApplied: string | null = null;
+  let statusMessage: string | null = null;
+  let statusTimer: ReturnType<typeof setTimeout> | null = null;
   let showOnboarding = !(await isOnboarded());
   let onboardingSampleActive = false;
   let inputMissing = false;
@@ -108,6 +110,7 @@ async function mainUnsafe(): Promise<void> {
         inputMissing,
         truncated: result?.meta.truncated ?? false,
         lastApplied,
+        statusMessage,
         thumbsVisible,
         localHistory: [...localHistory],
         onPauseToggle: () => void togglePause(),
@@ -300,6 +303,12 @@ async function mainUnsafe(): Promise<void> {
     if (suggestion.advisory || !suggestion.preview) return;
     if (!isEditable(input)) return;
     lastApplied = suggestion.preview;
+    // Clear the "Applied:" line after a few seconds instead of leaving it
+    // forever.
+    setTimeout(() => {
+      lastApplied = null;
+      rerender();
+    }, 5000);
     applySuggestion(input, suggestion);
     // Record acceptance feedback (spec §5.6 suggestions_feedback) when the
     // user has connected their account; silent otherwise (no account yet).
@@ -344,18 +353,27 @@ async function mainUnsafe(): Promise<void> {
     }
   }
 
+  /** Show a transient save/connect status line that auto-clears. */
+  function flashStatus(message: string): void {
+    statusMessage = message;
+    if (statusTimer) clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => {
+      statusMessage = null;
+      rerender();
+    }, 5000);
+    rerender();
+  }
+
   async function saveCurrentToLibrary(): Promise<void> {
     if (!isEditable(input)) return;
     const text = getInputText(input);
     if (!text.trim()) return;
     if (!settings.apiToken) {
-      lastApplied = "Connect your account in the Revealyst toolbar popup";
-      rerender();
+      flashStatus("Connect your account in the Revealyst toolbar popup");
       return;
     }
     if (!settings.teamId) {
-      lastApplied = "Pick a team in Settings (⚙️)";
-      rerender();
+      flashStatus("Pick a team in Settings (⚙️)");
       return;
     }
     try {
@@ -377,16 +395,15 @@ async function mainUnsafe(): Promise<void> {
         err.status = res.status;
         throw err;
       }
-      lastApplied = "Saved to library ⭐";
-      rerender();
+      flashStatus("Saved to library ⭐");
     } catch (error) {
       const status = (error as { status?: number }).status;
       const message = error instanceof Error ? error.message : "Save failed";
-      lastApplied =
+      flashStatus(
         status === 401 || message.includes("Unauthorized")
           ? "Session expired — refresh your token in Settings"
-          : `Save failed — ${message}`;
-      rerender();
+          : `Save failed — ${message}`,
+      );
     }
   }
 
