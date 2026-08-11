@@ -11,6 +11,8 @@ export interface SidebarProps {
   suggestionSource: "vectorize+llm" | "static" | null;
   busy: boolean;
   showOnboarding: boolean;
+  /** True once the user clicked "Try a sample prompt" in the onboarding. */
+  onboardingSampleActive: boolean;
   inputMissing: boolean;
   truncated: boolean;
   lastApplied: string | null;
@@ -18,6 +20,7 @@ export interface SidebarProps {
   thumbsVisible: boolean;
   onPauseToggle: () => void;
   onCollapseToggle: () => void;
+  onTrySample: () => void;
   onApply: (suggestion: Suggestion) => void;
   onThumbs: (rating: 1 | -1) => void;
   onSaveToLibrary: () => void;
@@ -62,24 +65,70 @@ export function Sidebar(props: SidebarProps) {
     );
   }
 
+  // First-run tutorial (spec §5.8): the sample prompt is scored live and its
+  // suggestions can be applied for real — a demo of the actual flow, not a
+  // static mock.
   if (props.showOnboarding) {
+    const liveScore = props.result;
+    const band = liveScore ? bandFor(liveScore.score) : null;
     return (
       <div className="flex h-full flex-col gap-4 p-4">
         <p className="text-lg font-bold">Welcome to Revealyst 👋</p>
         <div className="rounded-lg border border-zinc-200 p-3">
           <p className="text-sm font-semibold">Step 1 — See your score</p>
-          <p className="text-xs text-zinc-500">Type a prompt and watch the live quality meter.</p>
-          <div className="mt-2 rounded bg-zinc-100 p-2 text-center font-mono text-sm">
-            72 · green
-          </div>
+          <p className="text-xs text-zinc-500">
+            {props.onboardingSampleActive
+              ? "This is your live score for the sample prompt."
+              : "Try a sample prompt and watch the live quality meter."}
+          </p>
+          {props.onboardingSampleActive ? (
+            <div
+              className={`mt-2 rounded p-2 text-center font-mono text-xl font-bold ${
+                band === "green"
+                  ? "bg-emerald-100 text-emerald-700"
+                  : band === "red"
+                    ? "bg-red-100 text-red-600"
+                    : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {liveScore ? `${liveScore.score} · ${band}` : "scoring…"}
+            </div>
+          ) : (
+            <button
+              className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+              onClick={props.onTrySample}
+            >
+              Try a sample prompt
+            </button>
+          )}
         </div>
         <div className="rounded-lg border border-zinc-200 p-3">
           <p className="text-sm font-semibold">Step 2 — Improve with one click</p>
           <p className="text-xs text-zinc-500">
             When your score is low, tap Apply to upgrade the prompt instantly.
           </p>
-          <div className="mt-2 rounded bg-zinc-100 p-2 text-xs text-zinc-600">
-            Act as a senior copywriter. ✨ Apply
+          <div className="mt-2 flex flex-col gap-2">
+            {props.suggestions.map((s) => (
+              <div
+                key={s.id}
+                className="rounded border border-emerald-100 bg-emerald-50/50 p-2 text-xs text-zinc-700"
+              >
+                {s.text}
+                <button
+                  className="mt-1.5 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                  onClick={() => props.onApply(s)}
+                >
+                  Apply
+                </button>
+              </div>
+            ))}
+            {props.suggestions.length === 0 && (
+              <p className="text-xs text-zinc-400">
+                {props.onboardingSampleActive
+                  ? "Fetching suggestions…"
+                  : "Suggestions appear here — try the sample prompt."}
+              </p>
+            )}
           </div>
         </div>
         <button

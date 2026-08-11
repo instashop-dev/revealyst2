@@ -32,6 +32,33 @@ test.describe("Revealyst sidebar (mock ChatGPT page)", () => {
     expect(value).toContain("Help me write something good");
   });
 
+  test("onboarding demo is live: sample prompt is scored and its suggestion applies (spec §5.8)", async ({
+    page,
+  }) => {
+    await page.goto("/chatgpt.html");
+    const host = page.locator("#revealyst-sidebar-host");
+    await expect(host).toBeAttached({ timeout: 15_000 });
+    await expect(host).toContainText("Welcome to Revealyst");
+
+    // Click "Try a sample prompt" → the sample is inserted and scored live.
+    await host.getByRole("button", { name: "Try a sample prompt" }).click();
+    const input = page.locator("#prompt-textarea");
+    await expect(input).toHaveValue("Help me write something good for my team.");
+    await expect(host.getByText(/scoring…|· (red|yellow|green)/)).toBeVisible({ timeout: 20_000 });
+
+    // A real suggestion arrives and can be applied from inside the tutorial.
+    await expect(host.getByRole("button", { name: "Apply" }).first()).toBeVisible({
+      timeout: 45_000,
+    });
+    await host.getByRole("button", { name: "Apply" }).first().click();
+    const value = await input.inputValue();
+    expect(value).toContain("Help me write something good for my team.");
+
+    // Finishing the tutorial shows the normal sidebar.
+    await host.getByText("Got it — start coaching").click();
+    await expect(host.getByText("Prompt Quality Score")).toBeVisible();
+  });
+
   test("shows the missing-input fallback notice when no input exists (spec §7)", async ({
     page,
   }) => {

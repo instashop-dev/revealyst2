@@ -6,7 +6,7 @@ import type { ScoreEventPayload } from "../shared/types.js";
 import { CLIENT_TIPS } from "../shared/types.js";
 import styles from "./styles.css?inline";
 import { detectPlatform, findInput, waitForInput, type PlatformDef } from "../lib/platform.js";
-import { applySuggestion, getInputText, isEditable } from "../lib/apply.js";
+import { applySuggestion, getInputText, isEditable, setInputText } from "../lib/apply.js";
 import { createDebouncedScorer, scorePrompt } from "../lib/scoring.js";
 import {
   appendLocalHistory,
@@ -20,6 +20,11 @@ import {
 } from "../lib/storage.js";
 import { Sidebar } from "./sidebar.js";
 import type { TeamOption } from "./settings-panel.js";
+
+/** Sample prompt inserted by the onboarding "Try a sample prompt" demo
+ *  (spec §5.8). Deliberately vague so the live score is low and real
+ *  suggestions appear. */
+const ONBOARDING_SAMPLE_PROMPT = "Help me write something good for my team.";
 
 /**
  * Content script: injects the Revealyst sidebar (shadow DOM, 300px, right
@@ -83,6 +88,7 @@ async function mainUnsafe(): Promise<void> {
   let busy = false;
   let lastApplied: string | null = null;
   let showOnboarding = !(await isOnboarded());
+  let onboardingSampleActive = false;
   let inputMissing = false;
   let input: HTMLElement | null = null;
   let lastHash = "";
@@ -98,6 +104,7 @@ async function mainUnsafe(): Promise<void> {
         suggestionSource,
         busy,
         showOnboarding,
+        onboardingSampleActive,
         inputMissing,
         truncated: result?.meta.truncated ?? false,
         lastApplied,
@@ -110,6 +117,15 @@ async function mainUnsafe(): Promise<void> {
             applyHostWidth();
             rerender();
           });
+        },
+        onTrySample: () => {
+          // Live demo (spec §5.8): insert a sample prompt, score it, and let
+          // the user apply a real suggestion — onboarding teaches the flow.
+          if (!input) return;
+          setInputText(input, ONBOARDING_SAMPLE_PROMPT);
+          onboardingSampleActive = true;
+          onInput();
+          rerender();
         },
         onApply: (s) => applySuggestionToInput(s),
         onThumbs: (rating) => void recordRating(rating),
