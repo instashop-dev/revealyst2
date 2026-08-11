@@ -83,7 +83,10 @@ export function ProgressPage() {
 
       {!loading && !error && !hasData && (
         <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
-          No data yet — install the extension and score a prompt.
+          No data yet. To feed this dashboard: click the Revealyst toolbar icon → connect your
+          account (or paste your token), then open the sidebar Settings (⚙️) and turn on{" "}
+          <b>Cloud sync</b>. Only scores and prompt hashes sync — prompt text never leaves your
+          device.
         </p>
       )}
 

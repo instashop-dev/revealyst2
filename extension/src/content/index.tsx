@@ -330,7 +330,7 @@ async function mainUnsafe(): Promise<void> {
     const text = getInputText(input);
     if (!text.trim()) return;
     if (!settings.apiToken) {
-      lastApplied = "Add your API token in Settings (⚙️)";
+      lastApplied = "Connect your account in the Revealyst toolbar popup";
       rerender();
       return;
     }

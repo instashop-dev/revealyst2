@@ -152,9 +152,11 @@ export function SettingsPage() {
       <section className="rounded-2xl border border-zinc-200 p-6">
         <h2 className="text-sm font-semibold text-zinc-700">Connect the extension</h2>
         <p className="mt-1 text-sm text-zinc-500">
-          Paste this API token into the extension&apos;s Settings so the sidebar can save prompts to
-          your team library and send suggestion feedback. It only authorises signed requests — no
-          prompt text is synced by entering it (spec §5.7).
+          Click the Revealyst toolbar icon and either sign in with your email (magic link) or paste
+          this API token under <b>Connect with token</b>. Then open the sidebar Settings (⚙️), pick
+          your team, and turn on <b>Cloud sync</b> — that&apos;s what sends scores to this dashboard
+          and the team analytics. Only scores, flags and prompt hashes sync; the token only
+          authorises signed requests, no prompt text is transmitted by entering it (spec §5.7).
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input

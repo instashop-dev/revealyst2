@@ -7,6 +7,13 @@ export default defineManifest({
   description:
     "Turn every prompt into a step forward — live prompt scoring, one-click suggestions, team analytics.",
   permissions: ["storage"],
+  // The toolbar popup is the connect entry point (token paste or email magic
+  // link) — previously the built popup was never wired into the manifest, so
+  // clicking the toolbar icon did nothing on a real install.
+  action: {
+    default_popup: "src/action/index.html",
+    default_title: "Revealyst — Prompt Coach",
+  },
   // http://localhost/* is for Playwright e2e against mock LLM pages only.
   // chatgpt.com is the current ChatGPT origin (chat.openai.com redirects).
   host_permissions: [

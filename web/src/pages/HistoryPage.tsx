@@ -102,7 +102,8 @@ export function HistoryPage() {
 
       {!loading && !error && rows.length === 0 && (
         <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
-          No prompts scored in this period — install the extension and score a prompt.
+          No prompts synced in this period. Connect the extension (toolbar popup → Connect) and
+          turn on Cloud sync in the sidebar Settings (⚙️), then score a prompt.
         </p>
       )}
 

@@ -88,6 +88,6 @@ test.describe("Revealyst sidebar (mock ChatGPT page)", () => {
     const input = page.locator("#prompt-textarea");
     await input.fill("Help me write something good.");
     await host.getByTitle("Save to library").click();
-    await expect(host).toContainText("Add your API token in Settings");
+    await expect(host).toContainText("Connect your account in the Revealyst toolbar popup");
   });
 });
