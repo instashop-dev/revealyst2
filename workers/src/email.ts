@@ -27,6 +27,33 @@ export interface TeamInviteEmail extends MagicLinkEmail {
   teamName: string;
 }
 
+/**
+ * Weekly manager digest payload (built by `workers/src/digest.ts`). All text
+ * fields are already escaped by the HTML builder — never interpolate raw user
+ * content into this email.
+ */
+export interface WeeklyDigestEmail {
+  to: string;
+  teamName: string;
+  /** e.g. "week ending Jun 16" */
+  periodLabel: string;
+  avgScore: number | null;
+  prevAvgScore: number | null;
+  /** this week − last week, null when either window has no data */
+  scoreDelta: number | null;
+  promptCount: number;
+  /** members with events in BOTH windows whose average improved */
+  improvedCount: number;
+  /** members with events in BOTH windows (the improvement denominator) */
+  comparedCount: number;
+  /** distinct members active this week */
+  activeUsers: number;
+  /** human-readable top weakness, e.g. "no output format (34 prompts)" */
+  topWeakness: string | null;
+  topPrompts: Array<{ title: string | null; score: number | null; usage: number }>;
+  dashboardUrl: string;
+}
+
 interface EmailTemplate {
   subject: string;
   heading: string;
@@ -219,18 +246,17 @@ export async function sendTeamInviteEmail(
   });
 }
 
-async function sendEmail(
+async function sendRawEmail(
   config: SesConfig,
-  email: MagicLinkEmail,
-  tpl: EmailTemplate,
+  email: { to: string; subject: string; html: string },
 ): Promise<void> {
   const payload = JSON.stringify({
     FromEmailAddress: config.fromEmail,
     Destination: { ToAddresses: [email.to] },
     Content: {
       Simple: {
-        Subject: { Data: tpl.subject, Charset: "UTF-8" },
-        Body: { Html: { Data: buildBody(email, tpl), Charset: "UTF-8" } },
+        Subject: { Data: email.subject, Charset: "UTF-8" },
+        Body: { Html: { Data: email.html, Charset: "UTF-8" } },
       },
     },
   });
@@ -269,4 +295,117 @@ async function sendEmail(
     const detail = (await res.text().catch(() => "")).slice(0, 500);
     throw new Error(`SES send failed (${res.status}): ${detail}`);
   }
+}
+
+async function sendEmail(
+  config: SesConfig,
+  email: MagicLinkEmail,
+  tpl: EmailTemplate,
+): Promise<void> {
+  await sendRawEmail(config, {
+    to: email.to,
+    subject: tpl.subject,
+    html: buildBody(email, tpl),
+  });
+}
+
+const DIGEST_HEADER = `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f6f7f9;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f7f9;padding:32px 0;">
+      <tr><td align="center">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;">
+          <tr>
+            <td style="padding:28px 32px;background:linear-gradient(135deg,#4f46e5,#7c3aed);">
+              <span style="color:#ffffff;font-size:20px;font-weight:700;">Revealyst</span>
+              <span style="color:#c7d2fe;font-size:13px;display:block;margin-top:2px;">Turn every prompt into a step forward.</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">`;
+
+const DIGEST_FOOTER = `          </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px;border-top:1px solid #f0f0f0;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#9ca3af;">
+                You are receiving this because you are a manager on Revealyst. Sent by Revealyst — turn every prompt into a step forward.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+
+/**
+ * Build the digest email HTML (exported for unit tests). All user-derived
+ * values are HTML-escaped; the layout is a report, not a single-CTA page.
+ */
+export function buildWeeklyDigestHtml(email: WeeklyDigestEmail): string {
+  const escape = escapeHtml;
+  const delta =
+    email.scoreDelta == null
+      ? null
+      : `${email.scoreDelta > 0 ? "▲ +" : email.scoreDelta < 0 ? "▼ " : "▬ "}${email.scoreDelta}`;
+  const kpi = (label: string, value: string, accent = false) =>
+    `<td style="padding:16px;border:1px solid #e5e7eb;border-radius:8px;width:50%;">
+       <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:#9ca3af;">${escape(label)}</p>
+       <p style="margin:0;font-size:24px;font-weight:700;${accent ? "color:#059669;" : "color:#111827;"}">${escape(value)}</p>
+     </td>`;
+
+  const topPromptRows =
+    email.topPrompts.length === 0
+      ? `<p style="margin:0;font-size:13px;color:#6b7280;">No prompts shared to the team library yet — ask members to hit ⭐ on their best prompts.</p>`
+      : email.topPrompts
+          .map(
+            (p, i) =>
+              `<p style="margin:0 0 6px;font-size:13px;line-height:1.5;color:#374151;">
+                 ${i + 1}. <b>${escape(p.title || "Untitled prompt")}</b>
+                 <span style="color:#9ca3af;">— ${p.score == null ? "—" : `${p.score} pts`} · used ${p.usage}×</span>
+               </p>`,
+          )
+          .join("");
+
+  const improvementLine =
+    email.comparedCount === 0
+      ? `<p style="margin:0;font-size:14px;color:#6b7280;">Not enough data to compare member improvement yet — keep scoring prompts this week.</p>`
+      : `<p style="margin:0;font-size:14px;color:#374151;">
+           <b>${email.improvedCount} of ${email.comparedCount}</b> members with activity in both weeks improved their average score.
+         </p>`;
+
+  return `${DIGEST_HEADER}
+<h1 style="margin:0 0 4px;font-size:18px;color:#111827;">Your weekly team digest</h1>
+<p style="margin:0 0 24px;font-size:13px;color:#6b7280;">
+  ${escape(email.teamName)} · ${escape(email.periodLabel)}
+</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:8px 0;margin:0 -8px 8px;">
+  <tr>
+    ${kpi("Team average PQS", email.avgScore == null ? "—" : String(email.avgScore), true)}
+    ${kpi("Prompts scored", String(email.promptCount))}
+  </tr>
+</table>
+${delta == null ? "" : `<p style="margin:0 0 16px;font-size:13px;color:#6b7280;">vs last week: ${delta} pts <span style="color:#9ca3af;">(was ${email.prevAvgScore} pts)</span></p>`}
+<p style="margin:0 0 16px;font-size:14px;color:#374151;">${improvementLine}</p>
+${email.topWeakness == null ? "" : `<p style="margin:0 0 16px;font-size:14px;color:#374151;">Most common gap: <b>${escape(email.topWeakness)}</b>.</p>`}
+<p style="margin:24px 0 8px;font-size:13px;font-weight:600;color:#111827;">Top prompts (team library)</p>
+${topPromptRows}
+<a href="${escape(email.dashboardUrl)}" style="display:inline-block;margin-top:24px;background:#4f46e5;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:8px;">Open the team dashboard</a>
+${DIGEST_FOOTER}`;
+}
+
+/**
+ * Send the weekly manager digest through AWS SES. Subject and HTML are built
+ * here; aggregation lives in `workers/src/digest.ts`.
+ */
+export async function sendWeeklyDigestEmail(
+  config: SesConfig,
+  email: WeeklyDigestEmail,
+): Promise<void> {
+  await sendRawEmail(config, {
+    to: email.to,
+    subject: `Revealyst weekly digest — ${email.teamName}`,
+    html: buildWeeklyDigestHtml(email),
+  });
 }

@@ -45,3 +45,7 @@ RATE_LIMIT_DISABLED = "false"
 # non-secret vars; the access keys are Worker secrets.
 SES_REGION = "us-east-1"
 SES_FROM_EMAIL = "Revealyst <noreply@e.revealyst.com>"
+
+# Weekly manager digest (spec §4 north-star/retention): Monday 08:00 UTC.
+[triggers]
+crons = ["0 8 * * 1"]

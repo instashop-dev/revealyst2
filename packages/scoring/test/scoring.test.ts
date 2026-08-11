@@ -12,6 +12,71 @@ import {
 
 const engine = new RuleScoringEngine();
 
+describe("business-genre calibration (PMF review, rev 4)", () => {
+  it("does not nag for a role or examples on a specific business email", () => {
+    const r = engine.scoreSync(
+      "Draft an email to a client who is late paying. Be polite but firm, mention the invoice number and due date.",
+    );
+    expect(r.flags).not.toContain("missing_role");
+    expect(r.flags).not.toContain("no_examples");
+    expect(r.breakdown.role_clarity).toBeGreaterThanOrEqual(70);
+    expect(r.breakdown.examples_included).toBeGreaterThanOrEqual(70);
+  });
+
+  it("keeps coaching a vague business request without an audience", () => {
+    const r = engine.scoreSync("write an email to a prospect");
+    expect(r.flags).toEqual(
+      expect.arrayContaining(["low_specificity", "vague_context", "missing_role", "no_examples"]),
+    );
+  });
+
+  it("stops the role/examples nags on a thin but audience-named update", () => {
+    const r = engine.scoreSync("Write an update for the team on the project status");
+    expect(r.flags).not.toContain("missing_role");
+    expect(r.flags).not.toContain("no_examples");
+    // The useful coaching stays — the update is still under-specified.
+    expect(r.flags).toEqual(expect.arrayContaining(["low_specificity"]));
+  });
+
+  it("does not floor content generation (blog/LinkedIn posts keep role+examples)", () => {
+    expect(classifyTask("Write a blog post about our product")).toBe("generation");
+    const r = engine.scoreSync("Write a blog post about our product.");
+    expect(r.flags).toContain("missing_role");
+  });
+
+  it("recognises a board report as a business task", () => {
+    expect(classifyTask("Write a report for our board on Q3 results")).toBe("business");
+  });
+});
+
+describe("vague-object calibration (PMF review, rev 4)", () => {
+  it("coaches 'explain this code to me' instead of flooring it green", () => {
+    const r = engine.scoreSync("explain this code to me");
+    expect(bandFor(r.score)).not.toBe("green");
+    expect(r.flags).toEqual(
+      expect.arrayContaining(["low_specificity", "vague_context", "no_examples"]),
+    );
+  });
+
+  it("coaches a question form with a vague object", () => {
+    const r = engine.scoreSync("Can you explain this code?");
+    expect(bandFor(r.score)).not.toBe("green");
+    expect(r.flags).toContain("low_specificity");
+  });
+
+  it("still treats a translation with a target as complete", () => {
+    const r = engine.scoreSync("Translate this into Spanish: the meeting is at 3pm");
+    expect(bandFor(r.score)).toBe("green");
+    expect(r.flags).toHaveLength(0);
+  });
+
+  it("still treats a specific object as complete", () => {
+    const r = engine.scoreSync("Explain recursion to a 10-year-old.");
+    expect(bandFor(r.score)).toBe("green");
+    expect(r.flags).toHaveLength(0);
+  });
+});
+
 describe("band colours (spec: red 0-49, yellow 50-69, green 70-100)", () => {
   it("maps boundaries correctly", () => {
     expect(bandFor(0)).toBe("red");

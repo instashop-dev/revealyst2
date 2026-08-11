@@ -18,6 +18,12 @@ export function createTeamsRepo(db: SqlDb) {
       return rows[0];
     },
 
+    /** Every team (weekly digest cron, admin tooling). */
+    async listAll(): Promise<TeamRow[]> {
+      const { rows } = await db.query<TeamRow>("SELECT * FROM teams ORDER BY created_at");
+      return rows;
+    },
+
     async listMembers(teamId: string): Promise<TeamMemberRow[]> {
       const { rows } = await db.query<TeamMemberRow>(
         "SELECT * FROM team_members WHERE team_id = $1 ORDER BY user_id",

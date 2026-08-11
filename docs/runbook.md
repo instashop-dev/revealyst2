@@ -129,6 +129,27 @@ MAE — retrain when it drifts.
 The dashboard shows these in Progress → "North-star (spec §4)". Team/global
 aggregates of the same metrics are future work.
 
+### Weekly manager digest (spec §4 retention)
+
+Every Monday 08:00 UTC the worker's `scheduled` handler runs
+`runWeeklyDigest` (`workers/src/digest.ts`): for each team with prompt
+activity in the last 7 days it aggregates this week vs the previous week
+(team average PQS + delta, prompt volume, member improvement, most common
+weakness, top library prompts) and emails every manager via SES
+(`sendWeeklyDigestEmail`, same identity as magic links).
+
+- **Trigger**: cron `0 8 * * 1` in `workers/wrangler.toml` `[triggers]`.
+- **On demand**: `POST /api/admin/digest` (app creator only) runs the same
+  path and returns the summary — use it to test or backfill a missed Monday.
+- **Skip rules**: teams with zero prompts in the last 7 days, and teams with
+  no manager on record, get no email.
+- **SES unavailable / DEV_MODE**: the digest is logged (`[digest] …`) and
+  counted, nothing is delivered — local dev and CI behave identically.
+- **Privacy**: computed from the same anonymised data as the team dashboard
+  (scores, hashes, aggregates). Raw prompt text never appears in the email.
+- **No migration**: computed on the fly from `prompt_events` +
+  `library_prompts`.
+
 ### Migrations
 
 `db/migrations/*.sql` are applied by `node db/dist/run-migrations.js` in the

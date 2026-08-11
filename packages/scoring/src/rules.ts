@@ -34,8 +34,12 @@ const CHARS_PER_TOKEN = 4;
  * rules: a model trained on an older revision must not override the current
  * rules (see OnnxScoringAdapter's rules_rev gate), so a stale model falls
  * back to the rule engine until it is retrained against the new revision.
+ *
+ * Rev 4: business-genre task kind (email/memo/report no longer nag for a role
+ * or examples when specific) + vague-object detection ("explain this code to
+ * me" is coached instead of floored to green).
  */
-export const RULES_REVISION = 3;
+export const RULES_REVISION = 4;
 
 const DIMENSION_WEIGHTS = {
   specificity: 0.25,
@@ -68,7 +72,7 @@ function countMatches(text: string, re: RegExp): number {
 // Task classification (PMF review): what kind of request is this?
 // ---------------------------------------------------------------------------
 
-export type TaskKind = "simple" | "knowledge" | "generation";
+export type TaskKind = "simple" | "knowledge" | "business" | "generation";
 
 /** Word-count cap for a "simple request" — longer prompts are coached. */
 const SIMPLE_TASK_MAX_WORDS = 14;
@@ -98,6 +102,10 @@ const KNOWLEDGE_VERBS =
  * - "knowledge": explanation/analysis ("Explain the difference between X and
  *   Y", a question inside a longer prompt). Role and output format are
  *   optional, not deficiencies.
+ * - "business": a business-writing genre (email, memo, report, …) with a real
+ *   audience or purpose — role and a worked example are optional once the
+ *   request is already specific (see applyTaskFloors). Vague business requests
+ *   are still coached.
  * - "generation": "write/draft/create …" — coached on all five dimensions.
  */
 export function classifyTask(text: string): TaskKind {
@@ -110,18 +118,67 @@ export function classifyTask(text: string): TaskKind {
   const isShort = words <= SIMPLE_TASK_MAX_WORDS;
 
   if (isShort && !hasGenerationVerb) {
-    if (QUESTION_STARTERS.test(text) || /\?\s*$/.test(text)) return "simple";
-    if (SIMPLE_TASK_VERBS.test(head)) return "simple";
+    // A short request whose object is a vague referent ("explain this code to
+    // me", "summarize this") is NOT complete — the object is underspecified,
+    // so it must not be floored to green. "Translate this into Spanish" is
+    // complete (the target follows); "explain recursion" is complete (a real
+    // object).
+    if ((QUESTION_STARTERS.test(text) || /\?\s*$/.test(text)) && !VAGUE_OBJECT_RE.test(text))
+      return "simple";
+    if (SIMPLE_TASK_VERBS.test(head) && !VAGUE_OBJECT_RE.test(text)) return "simple";
   }
   if (KNOWLEDGE_VERBS.test(head) && !hasGenerationVerb) return "knowledge";
+  if (BUSINESS_GENRES.test(text) && hasBusinessContext(text)) return "business";
   if (/\?/.test(text) && !hasGenerationVerb && words <= 80) return "knowledge";
   return "generation";
+}
+
+/**
+ * Vague deictic referents that make a short request underspecified: "explain
+ * this code to me", "summarize this", "review that". Tolerates trailing
+ * punctuation ("Can you explain this code?") but NOT a following target
+ * ("translate this into Spanish") or audience ("explain this to a beginner").
+ */
+const VAGUE_OBJECT_RE =
+  /\b(this|that|it|these|those|one)\b(?:\s+(?:code|thing|stuff|text|document|doc|file|paragraph|line|section|part|bit))?(?:\s+(?:to|for)\s+(?:me|us))?[?!.]?\s*$/i;
+
+/**
+ * Business-writing genres where an explicit "Act as …" role and a worked
+ * example are optional once the request names an audience and purpose: a
+ * payment-reminder email, an internal update, a board report. Content
+ * generation ("blog post", "LinkedIn post") is deliberately NOT included —
+ * those tasks benefit from a role and examples.
+ */
+const BUSINESS_GENRES =
+  /\b(?:email|memo|report|note|agenda|newsletter|update|announcement|brief|minutes|reply|reminder|letter|summary|recap|overview)\b/i;
+
+/**
+ * True when a business-genre prompt names an audience or purpose — the same
+ * signal families scoreContext rewards. "Write an email to a prospect" fails
+ * this (a prospect is not a concrete audience), so it keeps full coaching.
+ */
+function hasBusinessContext(text: string): boolean {
+  if (
+    /\b(for|to|with|of)\b[^.!?]{0,50}\b(team|audience|client|customer|customers|users?|readers?|boss|manager|stakeholders?|board|investors?|ceo|cto|founder|founders|leaders?|directors?|hr|sales|marketing|finance|accounting|recruiters?|suppliers?|vendors?)\b/i.test(
+      text,
+    )
+  )
+    return true;
+  return /so that|my goal is|asking for|we (sell|are|build|provide)|our (company|product|service|team|client|clients)|currently|for a project|for our/i.test(
+    text,
+  );
 }
 
 /**
  * Floor dimensions that don't apply to the task. The displayed breakdown and
  * the derived flags both use the floored values, so a factual question never
  * shows "missing role" and an explanation never nags for an output format.
+ *
+ * Business tasks floor role + examples whenever the request names an audience
+ * or purpose (context ≥ 55) — a business request with a real audience never
+ * needs "Act as …" or a worked example. Specificity and output-format coaching
+ * still apply, so a vague "write an email to my boss" keeps the useful nags
+ * (add specifics, pick a format) and only loses the nonsensical ones.
  */
 export function applyTaskFloors(breakdown: ScoreBreakdown, kind: TaskKind): ScoreBreakdown {
   const floored = { ...breakdown };
@@ -130,6 +187,11 @@ export function applyTaskFloors(breakdown: ScoreBreakdown, kind: TaskKind): Scor
   } else if (kind === "knowledge") {
     floored.role_clarity = Math.max(floored.role_clarity, 70);
     floored.output_format = Math.max(floored.output_format, 70);
+  } else if (kind === "business") {
+    if (breakdown.context >= 55) {
+      floored.role_clarity = Math.max(floored.role_clarity, 70);
+      floored.examples_included = Math.max(floored.examples_included, 70);
+    }
   }
   return floored;
 }

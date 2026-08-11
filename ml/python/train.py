@@ -198,13 +198,14 @@ def main() -> None:
     # rules_rev MUST match RULES_REVISION in packages/scoring/src/rules.ts — the
     # OnnxScoringAdapter rejects a head whose rules_rev is stale, so a model
     # retrained against the current heuristics is the only one that runs.
+    # Rev 4: business-genre task kind + vague-object detection (see rules.ts).
     head = {
         "weight": model.head.weight.detach().cpu().numpy().tolist(),
         "bias": model.head.bias.detach().cpu().numpy().tolist(),
         "pooling": "mean",
         "activation": "sigmoid",
         "dim_names": ["overall"] + DIM_ORDER,
-        "rules_rev": 2,
+        "rules_rev": 4,
     }
     head_path = f"{args.output}/head.json"
     with open(head_path, "w", encoding="utf-8") as f:

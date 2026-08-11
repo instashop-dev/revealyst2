@@ -5,7 +5,7 @@ import { createPgPoolDb, runMigrations } from "@revealyst/db";
 import { DataType, newDb } from "pg-mem";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { WorkerEnv } from "../src/env.js";
-import app from "../src/index.js";
+import { app } from "../src/index.js";
 import { createRepos } from "../src/db/index.js";
 import { encryptPrompt, sha256Hex } from "../src/crypto.js";
 
