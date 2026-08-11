@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { RadarChart, TrendChart } from "../components/charts.js";
 import { GetStarted } from "../components/GetStarted.js";
 import { api } from "../api/client.js";
@@ -110,7 +111,11 @@ export function ProgressPage() {
                 <li>🎯 Practice: {focus ?? "keep scoring"}</li>
               </ul>
               <p className="mt-4 text-xs text-zinc-400">
-                Signed in as {user?.email}. Turn on Cloud sync in the extension to feed live data.
+                Signed in as {user?.email}.{" "}
+                <Link to="/settings" className="font-semibold text-emerald-700 hover:underline">
+                  Turn on Cloud sync
+                </Link>{" "}
+                in the extension to feed live data.
               </p>
             </section>
           </div>

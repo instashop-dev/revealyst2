@@ -14,10 +14,8 @@ export function GetStarted() {
       body: (
         <>
           Revealyst runs as a Chrome extension and shows a coaching sidebar on ChatGPT, Claude and
-          Gemini. During the beta it is distributed directly (ask the person who set up your team
-          for the installer, or load it from{" "}
-          <code className="rounded bg-zinc-100 px-1">extension/revealyst-extension.zip</code> in the
-          repository).
+          Gemini. During the beta it is distributed directly — ask the person who set up your team
+          for the installer link.
         </>
       ),
     },

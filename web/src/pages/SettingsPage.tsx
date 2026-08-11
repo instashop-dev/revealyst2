@@ -163,8 +163,7 @@ export function SettingsPage() {
           Click the Revealyst toolbar icon and either sign in with your email (magic link) or paste
           this API token under <b>Connect with token</b>. Then open the sidebar Settings (⚙️), pick
           your team, and turn on <b>Cloud sync</b> — that&apos;s what sends scores to this dashboard
-          and the team analytics. Only scores, flags and prompt hashes sync; the token only
-          authorises signed requests — no prompt text is transmitted by entering it.
+          and the team analytics.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
@@ -192,8 +191,8 @@ export function SettingsPage() {
         <h2 className="text-sm font-semibold text-zinc-700">Privacy &amp; cloud sync</h2>
         <p className="mt-3 text-sm text-zinc-600">
           Cloud sync is controlled in the <b>extension&apos;s Settings panel</b> — the web dashboard
-          cannot reach chrome.storage. Only scores and prompt hashes leave your device when sync is
-          on (privacy-first).
+          cannot reach chrome.storage. Only scores, flags and prompt hashes sync; prompt text never
+          leaves your device (privacy-first).
         </p>
       </section>
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/session.js";
 import type { HistoryEvent } from "../api/types.js";
@@ -100,10 +101,21 @@ export function HistoryPage() {
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {loading && <p className="text-sm text-zinc-400">Loading…</p>}
 
-      {!loading && !error && rows.length === 0 && (
+      {!loading && !error && events.length === 0 && (
         <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
-          No prompts synced in this period. Connect the extension (toolbar popup → Connect) and turn
-          on Cloud sync in the sidebar Settings (⚙️), then score a prompt.
+          No prompts synced in this period. Connect the extension (toolbar popup → Connect), turn on
+          Cloud sync in the sidebar Settings (⚙️), then score a prompt.{" "}
+          <Link to="/settings" className="font-semibold text-emerald-700 hover:underline">
+            Open Settings
+          </Link>
+          .
+        </p>
+      )}
+
+      {!loading && !error && events.length > 0 && rows.length === 0 && (
+        <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
+          Nothing matches the current filters — try a wider period, a lower min score, or a
+          different platform.
         </p>
       )}
 
@@ -161,7 +173,7 @@ export function HistoryPage() {
 
       <p className="text-xs text-zinc-400">
         {note ||
-          "Prompt snippets are stored locally in the extension's history — only scores and flags sync to the cloud."}
+          "Prompt snippets are stored locally in the extension's history — only scores, flags and prompt hashes sync to the cloud."}
       </p>
     </div>
   );
