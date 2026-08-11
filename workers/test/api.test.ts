@@ -5,7 +5,7 @@ import { createPgPoolDb, runMigrations } from "@revealyst/db";
 import { DataType, newDb } from "pg-mem";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WorkerEnv } from "../src/env.js";
-import app from "../src/index.js";
+import { app } from "../src/index.js";
 import { createRepos } from "../src/db/index.js";
 
 const MIGRATIONS_DIR = path.resolve(
@@ -269,6 +269,35 @@ describe("admin (app creator)", () => {
     expect(rohan?.teams.some((t) => t.name === "Acme Agency" && t.role === "manager")).toBe(true);
     const jamie = body.users.find((u) => u.email === "jamie@example.com");
     expect(jamie?.teams.some((t) => t.name === "Acme Agency" && t.role === "member")).toBe(true);
+  });
+
+  it("requires a session for the digest endpoint", async () => {
+    const res = await app.request("/api/admin/digest", { method: "POST" }, env);
+    expect(res.status).toBe(401);
+  });
+
+  it("blocks non-app-creators from triggering the digest", async () => {
+    const res = await app.request("/api/admin/digest", authed({}), env);
+    expect(res.status).toBe(403);
+  });
+
+  it("runs the weekly digest on demand for the app creator", async () => {
+    const res = await app.request("/api/admin/digest", adminAuthed({}), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      teams: number;
+      emails: number;
+      sent: number;
+      skipped: number;
+      errors: string[];
+      dev: boolean;
+    };
+    // The seeded team has no prompt events → skipped; no SES in tests → dev.
+    expect(body.teams).toBeGreaterThanOrEqual(1);
+    expect(body.skipped).toBeGreaterThanOrEqual(1);
+    expect(body.dev).toBe(true);
+    expect(body.sent).toBe(0);
+    expect(body.errors).toEqual([]);
   });
 
   it("impersonates a user and issues a working session token", async () => {

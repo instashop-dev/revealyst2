@@ -14,9 +14,15 @@ import { modelsRoutes } from "./routes/models.js";
 import { accountRoutes } from "./routes/account.js";
 import { requestLogger } from "./logger.js";
 import { closeRequestDb, getDb } from "./db.js";
-import type { AppEnv } from "./env.js";
+import { runWeeklyDigest } from "./digest.js";
+import type { AppEnv, WorkerEnv } from "./env.js";
 
-const app = new OpenAPIHono<AppEnv>();
+/**
+ * The Hono app (named export — tests import it and call `app.request`). The
+ * default export is the Cloudflare Worker entry object so the scheduled
+ * handler (weekly manager digest) is wired alongside `fetch`.
+ */
+export const app = new OpenAPIHono<AppEnv>();
 
 app.use(
   "/api/*",
@@ -101,4 +107,23 @@ app.onError((error, c) => {
   return c.json({ error: "internal_error", message: "Something went wrong" }, 500);
 });
 
-export default app;
+/**
+ * Weekly manager digest (spec §4 retention/north-star): every Monday 08:00
+ * UTC the cron trigger emails each team's managers a week-over-week report.
+ * The run is wrapped so a failure never crashes the Worker; each team is
+ * already isolated inside `runWeeklyDigest`.
+ */
+const scheduled: ExportedHandler<WorkerEnv>["scheduled"] = async (_controller, env, ctx) => {
+  ctx.waitUntil(
+    runWeeklyDigest(env).catch((err) => {
+      console.error("[digest] weekly digest run failed:", err);
+    }),
+  );
+};
+
+const worker: ExportedHandler<WorkerEnv> = {
+  fetch: (request, env, ctx) => app.fetch(request, env, ctx),
+  scheduled,
+};
+
+export default worker;

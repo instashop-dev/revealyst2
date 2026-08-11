@@ -3,6 +3,8 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { createRepos } from "../db/index.js";
 import { getDb } from "../db.js";
 import { isAdminEmail, requireAdmin, signSessionToken } from "../auth.js";
+import { runWeeklyDigest } from "../digest.js";
+import { createRateLimiter, rateLimit } from "../rate-limit.js";
 import type { AppEnv } from "../env.js";
 
 const errorResponse = z.object({ error: z.string(), message: z.string() });
@@ -149,4 +151,43 @@ adminRoutes.openapi(impersonateRoute, async (c) => {
     },
     200,
   );
+});
+
+// A compromised admin session must not be able to flood every manager with
+// SES mail — cap on-demand digest runs (once per 5 minutes is plenty for a
+// manual trigger; the weekly cron is separate and rate-unbounded).
+const digestLimiter = rateLimit(createRateLimiter(1, 300_000), 1);
+
+const digestResponse = z.object({
+  teams: z.number(),
+  emails: z.number(),
+  sent: z.number(),
+  skipped: z.number(),
+  errors: z.array(z.string()),
+  dev: z.boolean(),
+});
+
+const digestRoute = createRoute({
+  method: "post",
+  path: "/api/admin/digest",
+  middleware: [requireAdmin, digestLimiter],
+  responses: {
+    200: {
+      content: { "application/json": { schema: digestResponse } },
+      description: "Run the weekly manager digest on demand (app creator only)",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not the app creator",
+    },
+  },
+});
+
+adminRoutes.openapi(digestRoute, async (c) => {
+  const summary = await runWeeklyDigest(c.env);
+  return c.json(summary, 200);
 });

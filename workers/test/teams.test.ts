@@ -5,7 +5,7 @@ import { createPgPoolDb, runMigrations } from "@revealyst/db";
 import { DataType, newDb } from "pg-mem";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { WorkerEnv } from "../src/env.js";
-import app from "../src/index.js";
+import { app } from "../src/index.js";
 import { createRepos } from "../src/db/index.js";
 
 const MIGRATIONS_DIR = path.resolve(

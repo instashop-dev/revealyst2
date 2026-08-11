@@ -254,6 +254,48 @@ The dashboard (Progress → "North-star (spec §4)") shows the 4-week lift card
 weeks. The journey e2e asserts the block's shape; team/global aggregates are
 future work.
 
+## Weekly manager digest + scoring calibration (2026-08-11)
+
+### Weekly manager digest (spec §4 — retention driver)
+
+The MVP's single retention feature: every **Monday 08:00 UTC** the worker's
+`[triggers]` cron runs `runWeeklyDigest` (`workers/src/digest.ts`) and emails
+each team's managers a week-over-week report.
+
+- **Content**: team average PQS + delta vs the previous week, prompt volume,
+  member improvement ("5 of 7 members improved"), most common weakness, top 3
+  library prompts, CTA to the team dashboard.
+- **Skip rules**: teams with zero prompts in the last 7 days, and teams with
+  no manager on record, get no email. Per-team failures are isolated and
+  logged — one bad team never blocks the run.
+- **Email**: new `sendWeeklyDigestEmail` in `workers/src/email.ts` (branded
+  report layout, HTML-escaped; same SES identity as magic links). The low-level
+  SES send was refactored into `sendRawEmail` shared by all templates.
+- **On demand**: `POST /api/admin/digest` (app creator only) runs the same
+  path — test or backfill a missed Monday.
+- **Privacy**: computed from the same anonymised aggregates as the team
+  dashboard; no migration needed.
+- **Tests**: 11 in `workers/test/digest.test.ts` + 3 admin-digest API tests.
+
+### Scoring calibration (rev 4 — trust driver)
+
+The rule engine stopped nagging on normal business writing and started
+coaching genuinely vague prompts (`packages/scoring/src/rules.ts`):
+
+- **Business genre**: `classifyTask` gains a `business` task kind (email, memo,
+  report, update, … with an audience/purpose). `applyTaskFloors` floors
+  `role_clarity` + `examples_included` for those — a payment-reminder email no
+  longer gets "Act as …" / "add an example" nags. Vague business requests
+  ("write an email to a prospect") keep full coaching, and specificity/format
+  coaching still applies.
+- **Vague objects**: short requests whose object is a vague referent
+  ("explain this code to me", "summarize this", "can you explain this code?")
+  are no longer floored to green — they get coached on specifics. "Translate
+  this into Spanish" and "explain recursion" stay complete.
+- `RULES_REVISION` bumped 3 → 4; the ONNX `prompt-scorer-v1` was retrained
+  against the new rules (`head.json` rules_rev 4, corpus regenerated with the
+  same seed 42).
+
 ## How to verify
 
 ```bash
