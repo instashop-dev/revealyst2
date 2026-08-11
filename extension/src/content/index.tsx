@@ -54,7 +54,7 @@ async function mainUnsafe(): Promise<void> {
         : `anon-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     Object.assign(settings, await setSettings({ anonId }));
   }
-  const platform = detectPlatform(window.location.href, settings.platformSelectors);
+  const platform = detectPlatform(window.location.href);
   if (!platform) return; // unsupported page — do nothing
   const def: PlatformDef = platform;
 

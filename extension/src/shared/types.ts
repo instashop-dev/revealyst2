@@ -34,8 +34,6 @@ export interface Settings {
   cloudSync: boolean;
   /** API base URL (overridable for local dev). */
   apiBase: string;
-  /** Per-platform custom input selectors (spec: "plus any configurable list"). */
-  platformSelectors: Record<string, string>;
   /** Session token copied from the web dashboard Settings — authorises
    *  save-to-library and suggestion feedback (spec §5.1/§5.6). */
   apiToken: string;
@@ -54,7 +52,6 @@ export const DEFAULT_SETTINGS: Settings = {
   paused: false,
   cloudSync: false,
   apiBase: "https://revealyst-workers.thapi.workers.dev",
-  platformSelectors: {},
   apiToken: "",
   accountEmail: "",
   teamId: "",

@@ -6,7 +6,6 @@ import {
   postFeedback,
   requestMagicLink,
   saveToLibrary,
-  sha256Hex,
   verifyMagicToken,
 } from "./api.js";
 
@@ -33,7 +32,6 @@ export type ExtensionMessage =
       apiBase: string;
     }
   | { type: "GET_TEAMS"; token: string; apiBase: string }
-  | { type: "HASH"; text: string }
   | { type: "GET_ME"; token: string; apiBase: string }
   | { type: "REQUEST_MAGIC_LINK"; email: string; apiBase: string }
   | { type: "VERIFY_MAGIC_TOKEN"; token: string; apiBase: string };
@@ -69,9 +67,6 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
         break;
       case "GET_TEAMS":
         sendResponse(await fetchTeams(message.apiBase, message.token));
-        break;
-      case "HASH":
-        sendResponse(await sha256Hex(message.text));
         break;
       // Popup connect flows (toolbar action): the popup validates its token
       // against /api/auth/me and exchanges email magic links for a session

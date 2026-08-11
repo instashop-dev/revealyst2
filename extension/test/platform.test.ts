@@ -15,13 +15,6 @@ describe("platform detection", () => {
     expect(detectPlatform("https://example.com")).toBeUndefined();
   });
 
-  it("honours user selector overrides (configurable platform list, spec §5.1)", () => {
-    const overridden = detectPlatform("https://chat.openai.com/", {
-      chatgpt: "[data-custom-input]",
-    });
-    expect(overridden?.inputSelectors[0]).toBe("[data-custom-input]");
-  });
-
   it("covers every platform with resilient selectors", () => {
     for (const p of PLATFORMS) {
       expect(p.inputSelectors.length).toBeGreaterThan(1);
