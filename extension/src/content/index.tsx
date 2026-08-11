@@ -145,6 +145,14 @@ async function mainUnsafe(): Promise<void> {
           rerender();
         },
         onApply: (s) => applySuggestionToInput(s),
+        onUseTemplate: (prompt) => {
+          // Empty-state starter prompts: fill the composer and score it live
+          // (same flow as the onboarding sample, so the user sees the loop).
+          if (!input) return;
+          setInputText(input, prompt);
+          onInput();
+          rerender();
+        },
         onThumbs: (rating) => void recordRating(rating),
         onSaveToLibrary: () => void saveCurrentToLibrary(),
         onOnboardingDone: () => {

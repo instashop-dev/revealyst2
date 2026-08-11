@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ScoreResult } from "@revealyst/scoring";
 import type { LocalHistoryEntry, Settings, Suggestion } from "../shared/types.js";
 import { appliedMessage, type AppliedFeedback } from "../lib/apply.js";
+import { STARTER_PROMPTS } from "../lib/templates.js";
 import { SettingsPanel, type TeamOption } from "./settings-panel.js";
 
 export interface SidebarProps {
@@ -29,6 +30,8 @@ export interface SidebarProps {
   onCollapseToggle: () => void;
   onTrySample: () => void;
   onApply: (suggestion: Suggestion) => void;
+  /** Fill the composer with a starter prompt (empty-state value moment). */
+  onUseTemplate: (prompt: string) => void;
   onThumbs: (rating: 1 | -1) => void;
   onSaveToLibrary: () => void;
   onOnboardingDone: () => void;
@@ -273,11 +276,29 @@ export function Sidebar(props: SidebarProps) {
         </div>
         <div ref={listRef} className="flex flex-col gap-2">
           {props.busy && <p className="text-xs text-zinc-400">Analyzing…</p>}
-          {!props.busy && props.suggestions.length === 0 && (
+          {!props.busy && props.suggestions.length === 0 && !props.result && (
+            <div>
+              <p className="text-xs font-medium text-zinc-500">No prompt yet? Try a starter</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {STARTER_PROMPTS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => props.onUseTemplate(t.prompt)}
+                    title={t.prompt}
+                    className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50"
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[10px] text-zinc-400">
+                One click fills your prompt — then personalize it.
+              </p>
+            </div>
+          )}
+          {!props.busy && props.suggestions.length === 0 && props.result && (
             <p className="text-xs text-zinc-400">
-              {props.result && score >= 70
-                ? "Looking great — keep it up! 🎉"
-                : "Start typing to get coaching."}
+              {score >= 70 ? "Looking great — keep it up! 🎉" : "Start typing to get coaching."}
             </p>
           )}
           {props.suggestions.map((s) => (
