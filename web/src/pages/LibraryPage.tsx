@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { ApiError, api } from "../api/client.js";
 import { useAuth } from "../auth/session.js";
 import { useTeams } from "../teams.js";
@@ -217,298 +218,321 @@ export function LibraryPage() {
         </p>
       </div>
 
-      <section className="rounded-2xl border border-zinc-200 p-6">
-        <h2 className="text-sm font-semibold text-zinc-700">Save new prompt</h2>
-        <form onSubmit={saveNew} className="mt-3 flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            Title (optional)
-            <input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="e.g. Outreach email prompt"
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Prompt text
-            <textarea
-              required
-              value={newPromptText}
-              onChange={(e) => setNewPromptText(e.target.value)}
-              rows={4}
-              placeholder="Paste the prompt you want to share…"
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Tags (comma-separated, optional)
-            <input
-              value={newTags}
-              onChange={(e) => setNewTags(e.target.value)}
-              placeholder="email, sales"
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <button className="self-start rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-            Save to library
-          </button>
-          {saveStatus && <p className="text-sm text-zinc-600">{saveStatus}</p>}
-        </form>
-      </section>
+      {teams.length === 0 ? (
+        <section className="rounded-2xl border border-zinc-200 p-6">
+          <h2 className="text-sm font-semibold text-zinc-700">
+            The library is shared with your team
+          </h2>
+          <p className="mt-2 text-sm text-zinc-500">
+            Save your best prompts here and reuse them with one click. Create or join a team in{" "}
+            <Link to="/settings" className="font-semibold text-emerald-700 hover:underline">
+              Settings → Teams
+            </Link>{" "}
+            to get started.
+          </p>
+        </section>
+      ) : (
+        <>
+          <section className="rounded-2xl border border-zinc-200 p-6">
+            <h2 className="text-sm font-semibold text-zinc-700">Save new prompt</h2>
+            <form onSubmit={saveNew} className="mt-3 flex flex-col gap-3">
+              <label className="flex flex-col gap-1 text-sm">
+                Title (optional)
+                <input
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="e.g. Outreach email prompt"
+                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                Prompt text
+                <textarea
+                  required
+                  value={newPromptText}
+                  onChange={(e) => setNewPromptText(e.target.value)}
+                  rows={4}
+                  placeholder="Paste the prompt you want to share…"
+                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                Tags (comma-separated, optional)
+                <input
+                  value={newTags}
+                  onChange={(e) => setNewTags(e.target.value)}
+                  placeholder="email, sales"
+                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <button className="self-start rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+                Save to library
+              </button>
+              {saveStatus && <p className="text-sm text-zinc-600">{saveStatus}</p>}
+            </form>
+          </section>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          Team
-          <select
-            value={selectedTeamId}
-            onChange={(e) => setSelectedTeamId(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-          >
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Search
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="keyword"
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Tag
-          <input
-            value={tag}
-            onChange={(e) => setTag(e.target.value)}
-            placeholder="tag"
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Min score
-          <select
-            value={minScore}
-            onChange={(e) => setMinScore(Number(e.target.value))}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-          >
-            <option value={0}>Any</option>
-            <option value={50}>50+</option>
-            <option value={70}>70+</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Sort
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as "most_used" | "highest_score" | "newest")}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-          >
-            <option value="most_used">Most used</option>
-            <option value="highest_score">Highest score</option>
-            <option value="newest">Newest</option>
-          </select>
-        </label>
-      </div>
-
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {loading && <p className="text-sm text-zinc-400">Loading…</p>}
-
-      {!loading && !error && cards.length === 0 && (
-        <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
-          No prompts yet — save one with the extension or in the form above.
-        </p>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {cards.map((card) => {
-          const preview = openText[card.id];
-          const versions = versionsById[card.id];
-          return (
-            <article key={card.id} className="rounded-2xl border border-zinc-200 p-5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-zinc-800">{card.title ?? "Untitled prompt"}</h3>
-                  {card.is_standard && (
-                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-                      Team Standard
-                    </span>
-                  )}
-                </div>
-                {card.score !== null && (
-                  <span className="rounded-md bg-emerald-100 px-2 py-0.5 font-mono text-sm text-emerald-700">
-                    {card.score}
-                  </span>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {card.tags.map((t) => (
-                  <span
-                    key={t}
-                    className="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-500"
-                  >
-                    #{t}
-                  </span>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              Team
+              <select
+                value={selectedTeamId}
+                onChange={(e) => setSelectedTeamId(e.target.value)}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              >
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
                 ))}
-              </div>
-              <p className="mt-3 text-xs text-zinc-400">
-                by {card.contributor} · used {card.usage_count}× · v{card.version} · created{" "}
-                {new Date(card.created_at).toLocaleDateString()}
-                {card.last_used_at
-                  ? ` · last used ${new Date(card.last_used_at).toLocaleDateString()}`
-                  : ""}
-              </p>
-              {card.notes && (
-                <p className="mt-2 rounded-lg bg-zinc-50 p-2 text-xs text-zinc-600">{card.notes}</p>
-              )}
-              {preview && (
-                <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-zinc-50 p-2 text-xs text-zinc-700">
-                  {preview}
-                </pre>
-              )}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Search
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="keyword"
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Tag
+              <input
+                value={tag}
+                onChange={(e) => setTag(e.target.value)}
+                placeholder="tag"
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Min score
+              <select
+                value={minScore}
+                onChange={(e) => setMinScore(Number(e.target.value))}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              >
+                <option value={0}>Any</option>
+                <option value={50}>50+</option>
+                <option value={70}>70+</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Sort
+              <select
+                value={sort}
+                onChange={(e) =>
+                  setSort(e.target.value as "most_used" | "highest_score" | "newest")
+                }
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              >
+                <option value="most_used">Most used</option>
+                <option value="highest_score">Highest score</option>
+                <option value="newest">Newest</option>
+              </select>
+            </label>
+          </div>
 
-              {editingId === card.id && (
-                <div className="mt-3 flex flex-col gap-2 rounded-lg bg-zinc-50 p-3 text-sm">
-                  <label className="flex flex-col gap-1">
-                    Prompt text (edits create a new version, preserving this one)
-                    <textarea
-                      value={editPromptText}
-                      onChange={(e) => setEditPromptText(e.target.value)}
-                      rows={4}
-                      className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                    />
-                  </label>
-                  {isManager ? (
-                    <>
-                      <label className="flex flex-col gap-1">
-                        Notes
-                        <textarea
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
-                          rows={3}
-                          className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                        />
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={editStandard}
-                          onChange={(e) => setEditStandard(e.target.checked)}
-                          className="h-4 w-4"
-                        />
-                        Team Standard
-                      </label>
-                    </>
-                  ) : (
-                    <>
-                      <label className="flex flex-col gap-1">
-                        Title
-                        <input
-                          value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
-                          className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        Tags (comma-separated)
-                        <input
-                          value={editTags}
-                          onChange={(e) => setEditTags(e.target.value)}
-                          className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
-                        />
-                      </label>
-                    </>
-                  )}
-                  {editError && <p className="text-sm text-red-600">{editError}</p>}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => void saveEdit()}
-                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
-                    >
-                      Cancel
-                    </button>
+          {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+          {loading && <p className="text-sm text-zinc-400">Loading…</p>}
+
+          {!loading && !error && cards.length === 0 && (
+            <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
+              No prompts yet — save one with the extension or in the form above.
+            </p>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {cards.map((card) => {
+              const preview = openText[card.id];
+              const versions = versionsById[card.id];
+              return (
+                <article key={card.id} className="rounded-2xl border border-zinc-200 p-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold text-zinc-800">
+                        {card.title ?? "Untitled prompt"}
+                      </h3>
+                      {card.is_standard && (
+                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                          Team Standard
+                        </span>
+                      )}
+                    </div>
+                    {card.score !== null && (
+                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 font-mono text-sm text-emerald-700">
+                        {card.score}
+                      </span>
+                    )}
                   </div>
-                </div>
-              )}
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  onClick={() => void copyPrompt(card.id)}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                >
-                  Copy to clipboard
-                </button>
-                <button
-                  onClick={() => setSendOpenFor(sendOpenFor === card.id ? null : card.id)}
-                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
-                  title="Copies the prompt and opens your chosen LLM"
-                >
-                  Send to LLM {sendOpenFor === card.id ? "▲" : "▼"}
-                </button>
-                {sendOpenFor === card.id && (
-                  <div className="flex gap-1.5">
-                    {(["chatgpt", "claude", "gemini"] as const).map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => void sendToLlm(card.id, p)}
-                        className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-200"
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {card.tags.map((t) => (
+                      <span
+                        key={t}
+                        className="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-500"
                       >
-                        {p === "chatgpt" ? "ChatGPT" : p === "claude" ? "Claude" : "Gemini"}
-                      </button>
+                        #{t}
+                      </span>
                     ))}
                   </div>
-                )}
-                <button
-                  onClick={() => void toggleVersions(card.id)}
-                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
-                >
-                  {openVersions[card.id] ? "Hide versions" : "Versions"}
-                </button>
-                <button
-                  onClick={() => startEdit(card)}
-                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
-                >
-                  {isManager ? "Edit (notes)" : "Edit"}
-                </button>
-              </div>
+                  <p className="mt-3 text-xs text-zinc-400">
+                    by {card.contributor} · used {card.usage_count}× · v{card.version} · created{" "}
+                    {new Date(card.created_at).toLocaleDateString()}
+                    {card.last_used_at
+                      ? ` · last used ${new Date(card.last_used_at).toLocaleDateString()}`
+                      : ""}
+                  </p>
+                  {card.notes && (
+                    <p className="mt-2 rounded-lg bg-zinc-50 p-2 text-xs text-zinc-600">
+                      {card.notes}
+                    </p>
+                  )}
+                  {preview && (
+                    <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-zinc-50 p-2 text-xs text-zinc-700">
+                      {preview}
+                    </pre>
+                  )}
 
-              {versions && openVersions[card.id] && (
-                <ul className="mt-3 space-y-1 rounded-lg bg-zinc-50 p-2 text-xs text-zinc-600">
-                  {versions.map((v) => (
-                    <li key={v.id}>
-                      v{v.version} — {v.title ?? "Untitled"}
-                      {v.is_standard ? " · Team Standard" : ""} —{" "}
-                      {new Date(v.created_at).toLocaleDateString()}
-                    </li>
-                  ))}
-                  {versions.length === 0 && <li>No earlier versions.</li>}
-                </ul>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                  {editingId === card.id && (
+                    <div className="mt-3 flex flex-col gap-2 rounded-lg bg-zinc-50 p-3 text-sm">
+                      <label className="flex flex-col gap-1">
+                        Prompt text (edits create a new version, preserving this one)
+                        <textarea
+                          value={editPromptText}
+                          onChange={(e) => setEditPromptText(e.target.value)}
+                          rows={4}
+                          className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                        />
+                      </label>
+                      {isManager ? (
+                        <>
+                          <label className="flex flex-col gap-1">
+                            Notes
+                            <textarea
+                              value={editNotes}
+                              onChange={(e) => setEditNotes(e.target.value)}
+                              rows={3}
+                              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                            />
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={editStandard}
+                              onChange={(e) => setEditStandard(e.target.checked)}
+                              className="h-4 w-4"
+                            />
+                            Team Standard
+                          </label>
+                        </>
+                      ) : (
+                        <>
+                          <label className="flex flex-col gap-1">
+                            Title
+                            <input
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1">
+                            Tags (comma-separated)
+                            <input
+                              value={editTags}
+                              onChange={(e) => setEditTags(e.target.value)}
+                              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+                            />
+                          </label>
+                        </>
+                      )}
+                      {editError && <p className="text-sm text-red-600">{editError}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => void saveEdit()}
+                          className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
-      {total > cards.length && (
-        <div className="flex items-center justify-center gap-3">
-          <button
-            onClick={() => void loadMore()}
-            disabled={loadingMore}
-            className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
-          >
-            {loadingMore ? "Loading…" : `Load more (${cards.length} of ${total} shown)`}
-          </button>
-        </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => void copyPrompt(card.id)}
+                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                    >
+                      Copy to clipboard
+                    </button>
+                    <button
+                      onClick={() => setSendOpenFor(sendOpenFor === card.id ? null : card.id)}
+                      className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                      title="Copies the prompt and opens your chosen LLM"
+                    >
+                      Send to LLM {sendOpenFor === card.id ? "▲" : "▼"}
+                    </button>
+                    {sendOpenFor === card.id && (
+                      <div className="flex gap-1.5">
+                        {(["chatgpt", "claude", "gemini"] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => void sendToLlm(card.id, p)}
+                            className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-200"
+                          >
+                            {p === "chatgpt" ? "ChatGPT" : p === "claude" ? "Claude" : "Gemini"}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => void toggleVersions(card.id)}
+                      className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                    >
+                      {openVersions[card.id] ? "Hide versions" : "Versions"}
+                    </button>
+                    <button
+                      onClick={() => startEdit(card)}
+                      className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+                    >
+                      {isManager ? "Edit (notes)" : "Edit"}
+                    </button>
+                  </div>
+
+                  {versions && openVersions[card.id] && (
+                    <ul className="mt-3 space-y-1 rounded-lg bg-zinc-50 p-2 text-xs text-zinc-600">
+                      {versions.map((v) => (
+                        <li key={v.id}>
+                          v{v.version} — {v.title ?? "Untitled"}
+                          {v.is_standard ? " · Team Standard" : ""} —{" "}
+                          {new Date(v.created_at).toLocaleDateString()}
+                        </li>
+                      ))}
+                      {versions.length === 0 && <li>No earlier versions.</li>}
+                    </ul>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+
+          {total > cards.length && (
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+              >
+                {loadingMore ? "Loading…" : `Load more (${cards.length} of ${total} shown)`}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarList, TrendChart } from "../components/charts.js";
 import { TeamInvites } from "../components/TeamInvites.js";
 import { api } from "../api/client.js";
@@ -24,15 +24,17 @@ export function TeamDashboardPage() {
   const [reminderNote, setReminderNote] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  const managerTeams = useMemo(() => teams.filter((t) => t.role === "manager"), [teams]);
   const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
   const isManager = selectedTeam?.role === "manager";
 
-  // Default to the first team once teams load.
+  // Default to the first MANAGER team once teams load (the dropdown only
+  // lists manager teams — a member-only team would 403 on fetch).
   useEffect(() => {
-    if (teams.length > 0 && !teams.some((t) => t.id === selectedTeamId)) {
-      setSelectedTeamId(teams[0]!.id);
+    if (managerTeams.length > 0 && !managerTeams.some((t) => t.id === selectedTeamId)) {
+      setSelectedTeamId(managerTeams[0]!.id);
     }
-  }, [teams, selectedTeamId]);
+  }, [managerTeams, selectedTeamId]);
 
   // Auto-load the dashboard whenever team/period changes.
   useEffect(() => {
@@ -135,11 +137,16 @@ export function TeamDashboardPage() {
             onChange={(e) => setSelectedTeamId(e.target.value)}
             className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
           >
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.role})
-              </option>
-            ))}
+            {/* Only teams where the user is a manager — picking a member-only
+                team would 403 with a raw "Only team managers can view the
+                dashboard" error (PMF review). */}
+            {teams
+              .filter((t) => t.role === "manager")
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.role})
+                </option>
+              ))}
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -175,7 +182,7 @@ export function TeamDashboardPage() {
               <p className="text-xs text-zinc-500">Platforms</p>
               <ul className="mt-2 space-y-1 text-sm">
                 {data.volume_by_platform.map((p) => (
-                  <li key={p.llm_platform ?? "other"}>
+                  <li key={p.llm_platform ?? "unknown"}>
                     {p.llm_platform ?? "unknown"}: <b>{p.count}</b>
                   </li>
                 ))}
