@@ -21,6 +21,7 @@ export function TeamDashboardPage() {
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [reminderCopied, setReminderCopied] = useState(false);
+  const [reminderNote, setReminderNote] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
@@ -105,8 +106,16 @@ export function TeamDashboardPage() {
         : "Top weakness: none yet",
       `Prompts this period: ${promptCount}`,
     ].join("\n");
-    await navigator.clipboard.writeText(text);
+    // Open an editable note so the manager can add a follow-up before
+    // copying/sending (Slack/Teams integration is future work).
+    setReminderNote(text);
+  }
+
+  async function copyReminder() {
+    if (reminderNote == null) return;
+    await navigator.clipboard.writeText(reminderNote);
     setReminderCopied(true);
+    setTimeout(() => setReminderCopied(false), 2000);
   }
 
   return (
@@ -191,7 +200,7 @@ export function TeamDashboardPage() {
                 onClick={() => void coachingReminder()}
                 className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
               >
-                {reminderCopied ? "Reminder copied ✓" : "Coaching reminder"}
+                Coaching reminder
               </button>
             </div>
             <ul className="space-y-3">
@@ -236,7 +245,11 @@ export function TeamDashboardPage() {
               ))}
             </ul>
             {data.top_prompts.length === 0 && (
-              <p className="text-sm text-zinc-400">No prompts shared to the library yet.</p>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Your team has scored {promptCount} prompt{promptCount === 1 ? "" : "s"} this period
+                but hasn&apos;t shared one to the library yet. Save your best prompt with the ⭐
+                button in the extension — it appears here and becomes a Team Standard candidate.
+              </div>
             )}
             {!isManager && (
               <p className="mt-2 text-xs text-zinc-400">
@@ -297,6 +310,50 @@ export function TeamDashboardPage() {
         <p className="text-sm text-zinc-400">
           Select a team above to load analytics. Signed in as {session?.user.email}.
         </p>
+      )}
+
+      {reminderNote != null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          onClick={() => setReminderNote(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-zinc-700">Coaching reminder</h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              A note for a follow-up with the team (Slack/Teams integration is coming). Edit it,
+              then copy it or open it in your email.
+            </p>
+            <textarea
+              value={reminderNote}
+              onChange={(e) => setReminderNote(e.target.value)}
+              rows={6}
+              className="mt-3 w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs"
+            />
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={() => void copyReminder()}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                {reminderCopied ? "Copied ✓" : "Copy to clipboard"}
+              </button>
+              <a
+                href={`mailto:?subject=${encodeURIComponent("Coaching reminder")}&body=${encodeURIComponent(reminderNote)}`}
+                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100"
+              >
+                Open in email
+              </a>
+              <button
+                onClick={() => setReminderNote(null)}
+                className="ml-auto text-xs text-zinc-500 hover:underline"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

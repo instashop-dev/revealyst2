@@ -96,6 +96,12 @@ async function mainUnsafe(): Promise<void> {
   let lastHash = "";
   let lastPromptText = "";
   let thumbsVisible = false;
+  // The prompt whose LLM response is currently on screen — thumbs rate THIS
+  // prompt, not whatever was scored most recently.
+  let responseHash = "";
+  let responsePromptText = "";
+  // Which thumb the user clicked (1 | -1 | 0 = not rated yet).
+  let ratedValue: 0 | 1 | -1 = 0;
 
   function rerender(): void {
     reactRoot.render(
@@ -112,6 +118,7 @@ async function mainUnsafe(): Promise<void> {
         lastApplied,
         statusMessage,
         thumbsVisible,
+        ratedValue,
         localHistory: [...localHistory],
         onPauseToggle: () => void togglePause(),
         onCollapseToggle: () => {
@@ -174,6 +181,11 @@ async function mainUnsafe(): Promise<void> {
   const responseObserver = new MutationObserver(() => {
     if (!thumbsVisible && checkResponseDetected()) {
       thumbsVisible = true;
+      // The response belongs to the prompt that is currently in the input —
+      // capture it now so the thumbs rate the right prompt.
+      responseHash = lastHash;
+      responsePromptText = lastPromptText;
+      ratedValue = 0;
       rerender();
     }
   });
@@ -287,6 +299,16 @@ async function mainUnsafe(): Promise<void> {
     if (settings.paused || !isEditable(input)) return;
     const text = getInputText(input);
     if (!text.trim()) return;
+    // Composing a new prompt (different from the one whose response is on
+    // screen) resets the thumbs: they rate the previous exchange, not this
+    // new one.
+    if (responseHash && text !== responsePromptText) {
+      responseHash = "";
+      responsePromptText = "";
+      thumbsVisible = false;
+      ratedValue = 0;
+      rerender();
+    }
     scorer.schedule(text, onScored);
   }
 
@@ -330,11 +352,16 @@ async function mainUnsafe(): Promise<void> {
   }
 
   async function recordRating(rating: 1 | -1): Promise<void> {
-    if (!lastHash) return;
+    // Rate the prompt whose response is on screen; fall back to the last
+    // scored prompt when no response was captured yet.
+    const promptText = responsePromptText || lastPromptText;
+    const hash = responseHash || lastHash;
+    if (!hash || !promptText) return;
+    ratedValue = rating;
     // Local history (device-only) gets the rating so the snippet view shows it.
-    void rateLocalHistory(lastPromptText.slice(0, 2000), def.id, rating).then(() => {
+    void rateLocalHistory(promptText.slice(0, 2000), def.id, rating).then(() => {
       localHistory = localHistory.map((h) =>
-        h.prompt === lastPromptText.slice(0, 2000) && h.platform === def.id && h.rating === null
+        h.prompt === promptText.slice(0, 2000) && h.platform === def.id && h.rating === null
           ? { ...h, rating }
           : h,
       );
@@ -343,7 +370,7 @@ async function mainUnsafe(): Promise<void> {
     // Cloud event: only scores/flags/hash/rating leave the device (privacy §5.7).
     if (settings.cloudSync) {
       sendEvent({
-        prompt_hash: lastHash,
+        prompt_hash: hash,
         score: result?.score ?? 0,
         flags: result?.flags ?? [],
         breakdown: result?.breakdown ?? {},
@@ -351,6 +378,9 @@ async function mainUnsafe(): Promise<void> {
         rating,
       });
     }
+    flashStatus(
+      rating === 1 ? "Thanks — marked as helpful 👍" : "Thanks — marked as needs work 👎",
+    );
   }
 
   /** Show a transient save/connect status line that auto-clears. */
