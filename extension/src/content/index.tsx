@@ -3,7 +3,7 @@ import { createElement } from "react";
 import type { ScoreResult } from "@revealyst/scoring";
 import type { Suggestion } from "../shared/types.js";
 import type { ScoreEventPayload } from "../shared/types.js";
-import { CLIENT_TIPS } from "../shared/types.js";
+import { clientTipsFor } from "../shared/types.js";
 import styles from "./styles.css?inline";
 import { detectPlatform, findInput, waitForInput, type PlatformDef } from "../lib/platform.js";
 import {
@@ -283,8 +283,10 @@ async function mainUnsafe(): Promise<void> {
           };
           if (parsed.error) {
             // Spec §7: the suggestion API is unreachable/erroring — degrade to
-            // the client-side generic tips instead of showing nothing.
-            suggestions = CLIENT_TIPS;
+            // the client-side generic tips instead of showing nothing. Tips are
+            // matched to THIS prompt's deficiencies (a green prompt gets no
+            // irrelevant tips).
+            suggestions = clientTipsFor(update.result.flags);
             suggestionSource = "static";
           } else {
             suggestions = parsed.suggestions ?? [];
@@ -294,9 +296,9 @@ async function mainUnsafe(): Promise<void> {
         })
         .catch(() => {
           // Spec §7: server unreachable → static generic tips from a
-          // client-side fallback list.
+          // client-side fallback list, matched to the prompt's deficiencies.
           busy = false;
-          suggestions = CLIENT_TIPS;
+          suggestions = clientTipsFor(update.result.flags);
           suggestionSource = "static";
           rerender();
         });
