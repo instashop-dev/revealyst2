@@ -2,6 +2,7 @@ import { bandFor } from "@revealyst/scoring";
 import { useEffect, useRef, useState } from "react";
 import type { ScoreResult } from "@revealyst/scoring";
 import type { LocalHistoryEntry, Settings, Suggestion } from "../shared/types.js";
+import { appliedMessage, type AppliedFeedback } from "../lib/apply.js";
 import { SettingsPanel, type TeamOption } from "./settings-panel.js";
 
 export interface SidebarProps {
@@ -15,7 +16,8 @@ export interface SidebarProps {
   onboardingSampleActive: boolean;
   inputMissing: boolean;
   truncated: boolean;
-  lastApplied: string | null;
+  /** Transient "Applied …" state carrying the score delta (before → after). */
+  appliedFeedback: AppliedFeedback | null;
   /** Transient save/connect feedback (e.g. "Saved to library ⭐"), shown
    *  separately from the suggestion "Applied:" line and auto-cleared. */
   statusMessage: string | null;
@@ -292,9 +294,12 @@ export function Sidebar(props: SidebarProps) {
               )}
             </div>
           ))}
-          {props.lastApplied && (
-            <p className="text-[10px] text-emerald-700">
-              Applied: “{props.lastApplied.slice(0, 60)}…”
+          {props.appliedFeedback && (
+            <p className="rounded bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700">
+              {appliedMessage(props.appliedFeedback)}
+              {props.appliedFeedback.before != null && props.appliedFeedback.after == null && (
+                <span className="text-emerald-500"> — re-scoring…</span>
+              )}
             </p>
           )}
         </div>
