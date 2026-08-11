@@ -26,8 +26,14 @@ export const PLATFORMS: PlatformDef[] = [
       "[data-testid='prompt-input']",
     ],
     responseSelectors: [
+      // Primary: the classic turn DOM. ChatGPT A/B-tests a new message layout
+      // that drops data-message-author-role entirely, so also match the
+      // assistant turn's response-action row, which both layouts render once a
+      // reply exists (prefix match tolerates label churn: "Copy", "Copy
+      // response", …).
       "[data-message-author-role='assistant']",
-      "[data-message-author-role='user']",
+      "button[aria-label='Copy response']",
+      "button[aria-label^='Copy']",
     ],
   },
   {

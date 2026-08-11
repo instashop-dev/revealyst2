@@ -23,7 +23,11 @@ export interface ScoreUpdate {
  */
 export async function scorePrompt(prompt: string): Promise<ScoreUpdate> {
   const result = await engine.score(prompt);
-  const hash = await sha256Hex(prompt);
+  // Hash the trimmed text: LLM editors (ProseMirror) can leave invisible
+  // trailing whitespace in the DOM, which would otherwise make the same
+  // visible prompt hash differently across keystrokes — breaking cloud
+  // dedupe and event correlation (spec §4 re-prompt rate).
+  const hash = await sha256Hex(prompt.trim());
   return { result, hash, prompt };
 }
 

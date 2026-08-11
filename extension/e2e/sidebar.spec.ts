@@ -18,9 +18,11 @@ test.describe("Revealyst sidebar (mock ChatGPT page)", () => {
     await input.fill("Help me write something good.");
     await expect(host).toContainText(/red|score/i);
 
-    // A suggestion becomes available (static fallback or vectorize+llm)
+    // A suggestion becomes available (static fallback or vectorize+llm).
+    // The first score of a session downloads the ONNX model (fresh profile →
+    // no cache), so allow generous time for the suggestion fetch behind it.
     await expect(host.getByRole("button", { name: "Apply" }).first()).toBeVisible({
-      timeout: 20_000,
+      timeout: 45_000,
     });
 
     // One-click apply prepends the preview into the LLM input

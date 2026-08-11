@@ -17,13 +17,12 @@ import type { BrowserContext, Page, Request } from "@playwright/test";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import os from "node:os";
+import { rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const LIVE = process.env.REVEALYST_LIVE === "1";
 const HEADLESS = process.env.REVEALYST_LIVE_HEADLESS === "1";
 const extensionPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
-const profileDir =
-  process.env.REVEALYST_LIVE_PROFILE ?? path.join(os.tmpdir(), "revealyst-live-profile");
 const DEFAULT_API_BASE = "https://revealyst-workers.thapi.workers.dev";
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -43,6 +42,16 @@ interface NetFixture {
 const test = base.extend<{ context: BrowserContext; net: NetFixture }>({
   // eslint-disable-next-line no-empty-pattern -- Playwright requires the fixtures arg to be an object destructuring pattern
   context: async ({}, use) => {
+    // Fresh profile per test. chatgpt.com restores composer drafts and the
+    // extension keeps storage in the shared profile dir, so a shared dir leaks
+    // state across tests (e.g. the previous test's draft gets scored and the
+    // cloud prompt_hash no longer matches what was typed). Set
+    // REVEALYST_LIVE_PROFILE to use a fixed profile instead (e.g. a signed-in
+    // session produced by scripts/live-login.mjs).
+    const fixedProfile = process.env.REVEALYST_LIVE_PROFILE;
+    const profileDir =
+      fixedProfile ??
+      path.join(os.tmpdir(), `revealyst-live-profile-${Date.now()}-${Math.round(Math.random() * 1e6)}`);
     // Playwright's bundled Chromium: official Chrome (137+) no longer accepts
     // --load-extension, so extension e2e must use the bundled build.
     const context = await chromium.launchPersistentContext(profileDir, {
@@ -73,6 +82,11 @@ const test = base.extend<{ context: BrowserContext; net: NetFixture }>({
       );
     await use(context);
     await context.close();
+    // Auto-generated temp profiles are per-test; remove them (a fixed
+    // REVEALYST_LIVE_PROFILE dir is the user's, leave it alone).
+    if (!fixedProfile) {
+      await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+    }
   },
   net: async ({ context }, use) => {
     const requests: Request[] = [];
@@ -123,20 +137,36 @@ async function resetExtension(context: BrowserContext, page: Page) {
   await page.waitForTimeout(3000);
 }
 
-/** Ensure onboarding is dismissed (whatever the profile state). */
-async function ensureOnboarded(page: Page) {
+/** Ensure onboarding is dismissed (whatever the profile state). Retries the
+ *  "Got it" click: the sidebar re-renders as the onboarding sample animates,
+ *  which can detach the button mid-click on a fresh profile. */
+async function dismissOnboarding(page: Page): Promise<void> {
   const host = page.locator(HOST);
   await expect(host).toBeAttached({ timeout: 30_000 });
-  const done = host.getByText("Got it — start coaching");
-  if ((await done.count()) > 0) {
-    await done.click();
-    await expect(host).toContainText("Prompt Quality Score", { timeout: 15_000 });
+  for (let i = 0; i < 8; i++) {
+    const done = host.getByText("Got it — start coaching");
+    if ((await done.count()) === 0) return; // already onboarded
+    await done.click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
   }
+  await expect(host).toContainText("Prompt Quality Score", { timeout: 15_000 });
+}
+
+/** Ensure onboarding is dismissed (whatever the profile state). */
+async function ensureOnboarded(page: Page) {
+  await dismissOnboarding(page);
 }
 
 /** Resolve the visible ChatGPT composer (the id may sit on either the visible
- *  contenteditable div or — after a11y fallback changes — a hidden textarea). */
+ *  contenteditable div or — after a11y fallback changes — a hidden textarea).
+ *  chatgpt.com sometimes gates signed-out sessions behind a "Log in or sign
+ *  up" interstitial; "Try it first" opens the composer without logging in. */
 async function getComposer(page: Page) {
+  const tryIt = page.locator("a:has-text('Try it first')");
+  if ((await tryIt.count()) > 0 && (await tryIt.first().isVisible().catch(() => false))) {
+    await tryIt.first().click({ timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+  }
   const byId = page.locator("#prompt-textarea");
   if (
     (await byId.count()) > 0 &&
@@ -155,11 +185,30 @@ async function typePrompt(page: Page, text: string) {
   const composer = await getComposer(page);
   await expect(composer).toBeVisible({ timeout: 30_000 });
   await composer.click();
+  // ChatGPT restores the last composer draft (e.g. when REVEALYST_LIVE_PROFILE
+  // reuses a signed-in profile across tests). Clear it with real keystrokes so
+  // the editor's model stays consistent with its DOM before filling the text.
+  await composer.press("ControlOrMeta+a");
+  await composer.press("Backspace");
   try {
     await composer.fill(text);
   } catch {
     await composer.pressSequentially(text, { delay: 5 });
   }
+  // chatgpt.com A/B-tests two composer layouts (a ProseMirror editor and a
+  // hidden a11y textarea mirror). The content script scores whichever one it
+  // detects, so mirror the text into every candidate that differs — otherwise
+  // a stale draft can be scored and the cloud prompt_hash won't match what was
+  // typed. When fill() already propagated into the editor this is a no-op.
+  await page.evaluate((t) => {
+    for (const el of document.querySelectorAll("textarea, div[contenteditable='true']")) {
+      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) el.value = t;
+      else if ((el as HTMLElement).isContentEditable && el.textContent !== t) el.textContent = t;
+    }
+    document
+      .querySelectorAll("textarea, div[contenteditable='true']")
+      .forEach((el) => el.dispatchEvent(new Event("input", { bubbles: true })));
+  }, text);
 }
 
 /** Trigger a blur on the composer so the extension flushes the score. */
@@ -212,10 +261,7 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
     await expect(host).toBeAttached({ timeout: 30_000 });
 
     // Onboarding shows on a fresh profile; if it is already done, skip.
-    const welcome = host.getByText("Welcome to Revealyst");
-    if ((await welcome.count()) > 0) {
-      await host.getByText("Got it — start coaching").click();
-    }
+    await dismissOnboarding(page);
     await expect(host).toContainText("Prompt Quality Score", { timeout: 15_000 });
     await expect(host).toContainText("Team sync: off");
 
@@ -568,23 +614,50 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
     await (await getComposer(page)).press("Enter");
     await blurComposer(page);
 
-    // Wait for the assistant message to stream in, then thumbs appear.
-    await expect(page.locator("[data-message-author-role='assistant']").first()).toBeVisible({
+    // Wait for the real ChatGPT response, then the thumbs appear. The thumbs
+    // button is the user-visible spec §5.1 signal — wait on it directly
+    // instead of chatgpt.com's message DOM (OpenAI A/B-tests two layouts with
+    // different attributes, and this test must pass on both).
+    await expect(host.getByText("Rate after the LLM responds")).toBeHidden({
       timeout: 120_000,
     });
-    await expect(host.getByTitle("This prompt was helpful")).toBeVisible({ timeout: 30_000 });
+    await expect(host.getByTitle("This prompt was helpful")).toBeVisible({
+      timeout: 30_000,
+    });
 
-    // Ensure the entry exists (score flush may lag behind the send).
-    await page.waitForTimeout(2500);
+    // The score flush can lag the response by up to ~15s: the first score of a
+    // session loads the ONNX model (fresh profile → no cache), and the thumbs
+    // only depend on the response DOM. Poll until the scored entry lands.
+    const matches = (h: Record<string, unknown>) =>
+      norm((h.prompt as string) ?? "").trim() === prompt;
+    await expect
+      .poll(async () => historyOf(await extStorage(context)).some(matches), {
+        timeout: 60_000,
+      })
+      .toBe(true);
     const before = historyOf(await extStorage(context));
-    const entry = before.find((h) => h.prompt === prompt);
+    const entry = before.find(matches);
     expect(entry, "scored entry for the sent prompt should exist").toBeTruthy();
 
+    // ChatGPT (signed-out sessions) can show a soft rate-limit bottom sheet
+    // that covers the sidebar footer and intercepts the thumbs click. Dismiss
+    // the native dialog before rating.
+    const rl = page.locator("#no-auth-soft-rate-limit-dialog");
+    if ((await rl.count()) > 0) {
+      await page
+        .evaluate(
+          () =>
+            (document.getElementById("no-auth-soft-rate-limit-dialog") as HTMLDialogElement | null)?.close(),
+        )
+        .catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.waitForTimeout(500);
+    }
     await host.getByTitle("This prompt was helpful").click();
     await page.waitForTimeout(1500);
 
     const after = historyOf(await extStorage(context));
-    const rated = after.find((h) => h.prompt === prompt);
+    const rated = after.find(matches);
     expect(rated?.rating).toBe(1);
   });
 });
