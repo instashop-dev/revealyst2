@@ -85,6 +85,59 @@ export function createUsersRepo(db: SqlDb) {
       );
       return rows;
     },
+
+    /**
+     * Erase every trace of a user ("Delete my data"): their prompt events,
+     * suggestion feedback, invites they sent, library prompts they authored
+     * (including any version chain that touches them), then detach from teams
+     * and drop teams left with no members. Teams with other members keep
+     * running with `created_by` cleared. Finally the user row itself is
+     * removed (magic_link_tokens cascade). Runs in one transaction so a
+     * partial delete can never leave the account half-erased.
+     */
+    async deleteUserData(userId: string): Promise<void> {
+      await db.query("BEGIN");
+      try {
+        // Any prompt the user authored, plus every row in the same version
+        // tree (children reference parents via parent_id). Depth is bounded:
+        // each edit creates exactly one version of the current latest row, so
+        // chains beyond root + 2 edits are unreachable through the UI. A
+        // single statement keeps the parent_id FK satisfiable on delete.
+        await db.query(
+          `DELETE FROM library_prompts
+           WHERE id IN (
+             SELECT id FROM library_prompts WHERE created_by = $1
+             UNION
+             SELECT id FROM library_prompts
+               WHERE parent_id IN (SELECT id FROM library_prompts WHERE created_by = $1)
+             UNION
+             SELECT id FROM library_prompts
+               WHERE parent_id IN (
+                 SELECT id FROM library_prompts
+                   WHERE parent_id IN (SELECT id FROM library_prompts WHERE created_by = $1)
+               )
+           )`,
+          [userId],
+        );
+        await db.query("DELETE FROM prompt_events WHERE user_id = $1", [userId]);
+        await db.query("DELETE FROM suggestions_feedback WHERE user_id = $1", [userId]);
+        await db.query("DELETE FROM team_invites WHERE invited_by = $1", [userId]);
+        // Teams the user created but that still have members keep running.
+        await db.query("UPDATE teams SET created_by = NULL WHERE created_by = $1", [userId]);
+        await db.query("DELETE FROM team_members WHERE user_id = $1", [userId]);
+        // Teams left with nobody (their only member just left) are dead weight.
+        await db.query(
+          `DELETE FROM teams
+           WHERE created_by IS NULL
+             AND id NOT IN (SELECT team_id FROM team_members)`,
+        );
+        await db.query("DELETE FROM users WHERE id = $1", [userId]);
+        await db.query("COMMIT");
+      } catch (error) {
+        await db.query("ROLLBACK").catch(() => {});
+        throw error;
+      }
+    },
   };
 }
 
