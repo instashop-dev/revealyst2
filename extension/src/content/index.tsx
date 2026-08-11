@@ -15,6 +15,7 @@ import {
   getLocalHistory,
   getSettings,
   isOnboarded,
+  mergeLocalHistory,
   rateLocalHistory,
   setSettings,
 } from "../lib/storage.js";
@@ -230,17 +231,16 @@ async function mainUnsafe(): Promise<void> {
     result = update.result;
     lastHash = update.hash;
     lastPromptText = update.prompt;
-    localHistory = [
-      {
-        prompt: lastPromptText.slice(0, 2000),
-        score: update.result.score,
-        flags: update.result.flags,
-        platform: def.id,
-        rating: null,
-        createdAt: new Date().toISOString(),
-      },
-      ...localHistory,
-    ].slice(0, 100);
+    // Merge, never blindly prepend: re-scores of the same prompt (blur flush,
+    // suggestion apply) update the head row instead of duplicating it.
+    localHistory = mergeLocalHistory(localHistory, {
+      prompt: lastPromptText.slice(0, 2000),
+      score: update.result.score,
+      flags: update.result.flags,
+      platform: def.id,
+      rating: null,
+      createdAt: new Date().toISOString(),
+    });
     void appendLocalHistory(localHistory[0]!);
     if (settings.cloudSync) {
       sendEvent({

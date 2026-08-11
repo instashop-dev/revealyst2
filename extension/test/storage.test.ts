@@ -5,6 +5,7 @@ import {
   clearLocalHistory,
   getLocalHistory,
   getSettings,
+  mergeLocalHistory,
   rateLocalHistory,
   setSettings,
 } from "../src/lib/storage.js";
@@ -31,6 +32,48 @@ function stubChromeStorage() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("mergeLocalHistory (in-memory dedupe used by the sidebar)", () => {
+  const base = {
+    prompt: "Write a report",
+    score: 45,
+    flags: ["missing_role"],
+    platform: "chatgpt",
+    rating: null,
+    createdAt: "2026-08-07T10:00:00.000Z",
+  };
+
+  it("updates the head row when the same prompt is re-scored", () => {
+    const merged = mergeLocalHistory([base], {
+      ...base,
+      score: 52,
+      createdAt: "2026-08-07T10:00:05.000Z",
+    });
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.score).toBe(52);
+    // Original timestamp survives the refresh.
+    expect(merged[0]?.createdAt).toBe("2026-08-07T10:00:00.000Z");
+  });
+
+  it("keeps a thumbs rating across a re-score of the same prompt", () => {
+    const rated = { ...base, rating: 1 };
+    const merged = mergeLocalHistory([rated], { ...base, score: 60 });
+    expect(merged[0]?.rating).toBe(1);
+    expect(merged[0]?.score).toBe(60);
+  });
+
+  it("prepends a new row when the prompt or platform changes", () => {
+    const merged = mergeLocalHistory([base], {
+      ...base,
+      prompt: "Draft an email",
+      platform: "claude",
+      createdAt: "2026-08-07T10:01:00.000Z",
+    });
+    expect(merged).toHaveLength(2);
+    expect(merged[0]?.prompt).toBe("Draft an email");
+    expect(merged[1]?.prompt).toBe("Write a report");
+  });
 });
 
 describe("settings storage", () => {
