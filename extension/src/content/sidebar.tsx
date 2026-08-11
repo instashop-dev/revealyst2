@@ -32,7 +32,6 @@ export interface SidebarProps {
   onThumbs: (rating: 1 | -1) => void;
   onSaveToLibrary: () => void;
   onOnboardingDone: () => void;
-  onCloudSyncToggle: (enabled: boolean) => void;
   onSaveSettings: (patch: Partial<Settings>) => void;
   onClearHistory: () => void;
   localHistory: LocalHistoryEntry[];
@@ -348,13 +347,15 @@ export function Sidebar(props: SidebarProps) {
         >
           ⭐
         </button>
-        <button
-          className={`rounded px-1.5 py-1 ${props.settings.cloudSync ? "text-emerald-600" : ""}`}
-          onClick={() => props.onCloudSyncToggle(!props.settings.cloudSync)}
-          title={props.settings.cloudSync ? "Cloud sync on" : "Cloud sync off (privacy-first)"}
+        <a
+          href="https://revealyst-web.pages.dev"
+          target="_blank"
+          rel="noreferrer"
+          className="rounded px-1.5 py-1 font-semibold text-emerald-600 hover:bg-zinc-100"
+          title="Open the web dashboard (progress, history, team)"
         >
-          {props.settings.cloudSync ? "Cloud sync: on" : "Cloud sync: off"}
-        </button>
+          Dashboard ↗
+        </a>
       </footer>
     </div>
   );

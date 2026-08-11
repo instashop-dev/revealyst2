@@ -13,7 +13,7 @@
  * against the local mock pages only.
  */
 import { test as base, expect, chromium } from "@playwright/test";
-import type { BrowserContext, Page, Request } from "@playwright/test";
+import type { BrowserContext, Locator, Page, Request } from "@playwright/test";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import os from "node:os";
@@ -160,6 +160,18 @@ async function ensureOnboarded(page: Page) {
   await dismissOnboarding(page);
 }
 
+/** Turn on cloud sync through the Settings panel (⚙️) — the single source of
+ *  truth for the privacy toggle since the footer button was removed. */
+async function enableCloudSync(host: Locator) {
+  await host.getByTitle("Settings — token, team, local history").click();
+  const checkbox = host.locator("label", { hasText: "Cloud sync" }).locator("input");
+  await expect(checkbox).toBeVisible();
+  if (!(await checkbox.isChecked())) await checkbox.check();
+  await host.getByText("Save settings").click();
+  // Save closes the settings panel; the sidebar header is visible again.
+  await expect(host.getByText("Prompt Quality Score")).toBeVisible();
+}
+
 /** Resolve the visible ChatGPT composer (the id may sit on either the visible
  *  contenteditable div or — after a11y fallback changes — a hidden textarea).
  *  chatgpt.com sometimes gates signed-out sessions behind a "Log in or sign
@@ -275,7 +287,12 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
     // Onboarding shows on a fresh profile; if it is already done, skip.
     await dismissOnboarding(page);
     await expect(host).toContainText("Prompt Quality Score", { timeout: 15_000 });
-    await expect(host).toContainText("Cloud sync: off");
+    // Default is privacy-first: cloud sync starts off in the settings panel.
+    await host.getByTitle("Settings — token, team, local history").click();
+    const syncCheckbox = host.locator("label", { hasText: "Cloud sync" }).locator("input");
+    await expect(syncCheckbox).toBeVisible();
+    expect(await syncCheckbox.isChecked()).toBe(false);
+    await host.getByText("Close ✕").click();
 
     // Content script must have found the real ChatGPT composer.
     await expect(await getComposer(page)).toBeVisible({ timeout: 30_000 });
@@ -430,8 +447,7 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
 
     // Turn on cloud sync through the UI, then score a prompt.
     const host = page.locator(HOST);
-    await host.getByTitle("Cloud sync off (privacy-first)").click();
-    await expect(host).toContainText("Cloud sync: on");
+    await enableCloudSync(host);
     await typePrompt(page, "persistence check prompt");
     await blurComposer(page);
     await waitForScore(page);
@@ -445,7 +461,6 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForTimeout(4000);
     await expect(page.locator(HOST)).toBeAttached({ timeout: 30_000 });
-    await expect(page.locator(HOST)).toContainText("Cloud sync: on", { timeout: 15_000 });
 
     const after = await extStorage(context);
     expect(settingsOf(after).cloudSync).toBe(true);
@@ -543,8 +558,7 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
 
     // Enable cloud sync so events fire.
     const host = page.locator(HOST);
-    await host.getByTitle("Cloud sync off (privacy-first)").click();
-    await expect(host).toContainText("Cloud sync: on");
+    await enableCloudSync(host);
 
     const marker = `REVEALYST_PRIVACY_MARKER_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     const prompt = `${marker} Write a short paragraph about privacy-first prompt analytics.`;
