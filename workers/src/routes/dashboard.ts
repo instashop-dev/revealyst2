@@ -108,19 +108,24 @@ dashboardRoutes.openapi(route, async (c) => {
 
   // In identifiable mode, group trends by the authenticated user id (events
   // stamped with user_id); otherwise fall back to the anonymous id mapping.
+  // All (user, day, score) points pass through — the client renders each
+  // member's progression instead of a single snapshot (spec §5.5 "Score
+  // progression per member").
   const trendByUser = identifiable
-    ? [...new Map(stats.trendByUser.map((t) => [t.user_id ?? t.user_anon_id, t])).values()]
+    ? stats.trendByUser
         .map((t) => ({
           user: nameFor(t.user_id),
           day: t.day,
           avg_score: t.avg_score,
         }))
         .sort((a, b) => a.user.localeCompare(b.user) || a.day.localeCompare(b.day))
-    : stats.trendByUser.map((t) => ({
-        user: pseudonym.get(t.user_anon_id) ?? "User ?",
-        day: t.day,
-        avg_score: t.avg_score,
-      }));
+    : stats.trendByUser
+        .map((t) => ({
+          user: pseudonym.get(t.user_anon_id) ?? "User ?",
+          day: t.day,
+          avg_score: t.avg_score,
+        }))
+        .sort((a, b) => a.user.localeCompare(b.user) || a.day.localeCompare(b.day));
 
   return c.json(
     {

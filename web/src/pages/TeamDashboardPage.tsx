@@ -62,6 +62,17 @@ export function TeamDashboardPage() {
   const scoreTrend = (data?.score_by_day ?? []).map((d) => ({ label: d.day, value: d.avg_score }));
   const promptCount = (data?.volume_by_day ?? []).reduce((n, d) => n + d.count, 0);
 
+  /** Group the flat (user, day, score) rows into per-member progressions. */
+  function groupTrendsByUser(rows: DashboardResponse["trends_by_user"]) {
+    const byUser = new Map<string, DashboardResponse["trends_by_user"]>();
+    for (const row of rows) {
+      const list = byUser.get(row.user) ?? [];
+      list.push(row);
+      byUser.set(row.user, list);
+    }
+    return [...byUser.entries()].map(([user, points]) => ({ user, points }));
+  }
+
   async function copyPrompt(id: string) {
     if (!session) return;
     try {
@@ -238,15 +249,28 @@ export function TeamDashboardPage() {
             <h2 className="mb-3 text-sm font-semibold text-zinc-700">
               Individual trends (pseudonymised)
             </h2>
-            <ul className="space-y-2 text-sm">
-              {data.trends_by_user.map((t, i) => (
-                <li key={i} className="text-zinc-600">
-                  <b>{t.user}</b> — {t.day}: <b className="text-emerald-600">{t.avg_score}</b>
-                </li>
-              ))}
-            </ul>
-            {data.trends_by_user.length === 0 && (
+            {data.trends_by_user.length === 0 ? (
               <p className="text-sm text-zinc-400">No member trends in this period.</p>
+            ) : (
+              <div className="space-y-4">
+                {groupTrendsByUser(data.trends_by_user).map((member) => (
+                  <div key={member.user}>
+                    <div className="flex items-baseline justify-between">
+                      <p className="text-sm font-medium text-zinc-700">{member.user}</p>
+                      <p className="text-xs text-zinc-400">
+                        {member.points[0]?.avg_score} →{" "}
+                        {member.points[member.points.length - 1]?.avg_score} pts ·{" "}
+                        {member.points.length} day(s)
+                      </p>
+                    </div>
+                    <TrendChart
+                      points={member.points.map((p) => ({ label: p.day, value: p.avg_score }))}
+                      width={520}
+                      height={80}
+                    />
+                  </div>
+                ))}
+              </div>
             )}
           </section>
 
