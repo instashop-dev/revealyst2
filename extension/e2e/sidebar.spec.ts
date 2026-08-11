@@ -25,11 +25,13 @@ test.describe("Revealyst sidebar (mock ChatGPT page)", () => {
       timeout: 45_000,
     });
 
-    // One-click apply prepends the preview into the LLM input
+    // One-click apply inserts the suggestion preview into the LLM input.
     await host.getByRole("button", { name: "Apply" }).first().click();
     const value = await input.inputValue();
-    expect(value).toContain("Act as");
+    // The first non-advisory suggestion is applied (role coaching is advisory
+    // and has no Apply button); the original prompt always survives.
     expect(value).toContain("Help me write something good");
+    expect(value).not.toBe("Help me write something good");
   });
 
   test("onboarding demo is live: sample prompt is scored and its suggestion applies (spec §5.8)", async ({

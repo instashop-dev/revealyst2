@@ -5,6 +5,9 @@ export interface Suggestion {
   text: string;
   preview: string;
   action: "prepend" | "append" | "insert";
+  /** Advisory suggestions carry coaching text but no auto-inserted preview —
+   *  the sidebar shows them without an Apply button. */
+  advisory?: boolean;
 }
 
 export interface SuggestionResponse {
@@ -78,11 +81,14 @@ export interface LocalHistoryEntry {
  *  request fails and no server fallback is reachable. */
 export const CLIENT_TIPS: Suggestion[] = [
   {
+    // Advisory: the extension never sees the task, so it never fabricates a
+    // role ("Act as a QA specialist") — the user completes the role themselves.
     id: "add_role",
     type: "add_role",
-    text: 'Give the AI a role to anchor its expertise, e.g. "Act as a senior copywriter."',
-    preview: "Act as a senior copywriter. ",
-    action: "prepend",
+    text: "Say what perspective the AI should take — for example the role, the reader, or the goal you want the response to serve.",
+    preview: "",
+    action: "append",
+    advisory: true,
   },
   {
     id: "add_output_format",

@@ -42,9 +42,15 @@ describe("selectStaticPatterns", () => {
   });
 
   it("orders by match count then priority", () => {
-    const picked = selectStaticPatterns(["missing_role"]);
-    expect(picked[0]?.category).toBe("add_role");
+    const picked = selectStaticPatterns(["missing_output_format"]);
+    expect(picked[0]?.category).toBe("add_output_format");
     expect(picked[0]?.priority).toBe(1);
+  });
+
+  it("returns no fabricated role patterns for a missing role", () => {
+    // The engine never knows the task, so role coaching is advisory
+    // (ROLE_SUGGESTION at the getSuggestions level), never a guessed role.
+    expect(selectStaticPatterns(["missing_role"])).toHaveLength(0);
   });
 
   it("never inserts fabricated business facts in static context previews", () => {
@@ -57,7 +63,7 @@ describe("selectStaticPatterns", () => {
 });
 
 describe("normalizeSuggestions", () => {
-  it("drops self-referential 'AI prompt engineer' suggestions", () => {
+  it("replaces fabricated role suggestions with the advisory suggestion", () => {
     const out = normalizeSuggestions([
       {
         id: "add_role",
@@ -66,25 +72,36 @@ describe("normalizeSuggestions", () => {
         preview: "Act as an AI prompt engineer. ",
         action: "prepend",
       },
-    ]);
-    expect(out).toHaveLength(0);
-  });
-
-  it("drops placeholder previews ([role], '...')", () => {
-    const out = normalizeSuggestions([
       {
         id: "add_role",
         type: "add_role",
-        text: "Add a role.",
-        preview: "Act as a [role]. ",
+        text: "Define a role.",
+        preview: "Act as a QA specialist. ",
         action: "prepend",
       },
+    ]);
+    // Never a fabricated role: exactly one advisory suggestion, no preview.
+    expect(out).toHaveLength(1);
+    expect(out[0]?.advisory).toBe(true);
+    expect(out[0]?.preview).toBe("");
+    expect(out[0]?.preview).not.toMatch(/Act as/i);
+  });
+
+  it("drops non-role placeholder previews ([role], '...')", () => {
+    const out = normalizeSuggestions([
       {
         id: "add_context",
         type: "add_context",
         text: "Add context.",
         preview: " For context: ...",
         action: "append",
+      },
+      {
+        id: "add_output_format",
+        type: "add_output_format",
+        text: "Add a format.",
+        preview: "Respond as a [format]. ",
+        action: "prepend",
       },
     ]);
     expect(out).toHaveLength(0);
@@ -103,7 +120,7 @@ describe("normalizeSuggestions", () => {
     expect(out).toHaveLength(0);
   });
 
-  it("strips a merged format suffix so one click fixes one deficiency", () => {
+  it("keeps the advisory role suggestion without a merged format suffix", () => {
     const out = normalizeSuggestions([
       {
         id: "add_role",
@@ -113,7 +130,10 @@ describe("normalizeSuggestions", () => {
         action: "prepend",
       },
     ]);
-    expect(out[0]?.preview).toBe("Act as a public speaking coach.");
+    // Never fabricated — the user completes the role themselves.
+    expect(out[0]?.advisory).toBe(true);
+    expect(out[0]?.preview).toBe("");
+    expect(out[0]?.preview).not.toMatch(/Act as|respond as/i);
   });
 
   it("dedupes near-identical suggestions and caps at 3", () => {
