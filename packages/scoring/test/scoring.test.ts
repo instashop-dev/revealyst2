@@ -77,6 +77,31 @@ describe("vague-object calibration (PMF review, rev 4)", () => {
   });
 });
 
+describe("floored dimension reporting (PMF review, rev 5)", () => {
+  it("reports every floored dimension for a simple question", () => {
+    // "What is the capital of France?" is complete as-is: all five dimensions
+    // are auto-satisfied. The sidebar must render these as "not needed", not
+    // green bars that look earned.
+    const r = engine.scoreSync("What is the capital of France?");
+    expect(r.meta.flooredDims).toEqual(
+      expect.arrayContaining(["role_clarity", "output_format", "examples_included"]),
+    );
+  });
+
+  it("reports only role + format as floored for a knowledge task", () => {
+    const r = engine.scoreSync(
+      "Explain the difference between a git merge and a rebase. Assume I know basic git. Give me one concrete example of when to use each, and a rule of thumb for choosing.",
+    );
+    expect(r.meta.flooredDims).toEqual(expect.arrayContaining(["role_clarity", "output_format"]));
+  });
+
+  it("reports no floored dimensions when nothing was floored", () => {
+    const r = engine.scoreSync("write an email to a prospect");
+    expect(r.meta.flooredDims).toBeUndefined();
+    expect(r.breakdown.role_clarity).toBeLessThan(50);
+  });
+});
+
 describe("band colours (spec: red 0-49, yellow 50-69, green 70-100)", () => {
   it("maps boundaries correctly", () => {
     expect(bandFor(0)).toBe("red");

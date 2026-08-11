@@ -34,6 +34,16 @@ export interface ScoreMeta {
   estimatedTokens: number;
   wordCount: number;
   charCount: number;
+  /**
+   * Dimensions the rule engine auto-satisfied for this task kind (e.g. role
+   * and output format on a knowledge question). The overall score counts them
+   * at their floored value, but the prompt does NOT actually contain them —
+   * UI should render these as "not needed" instead of a green bar that looks
+   * earned (PMF review: floored 70s painted green bars for prompts with no
+   * role or examples). Only set on the rules path; the ONNX model path never
+   * floors and omits this.
+   */
+  flooredDims?: DimensionName[];
   /** Set when the ONNX model path was attempted but failed. */
   modelError?: string;
 }

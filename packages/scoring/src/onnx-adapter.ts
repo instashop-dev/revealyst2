@@ -207,7 +207,15 @@ export class OnnxScoringAdapter implements ScoringAdapter {
       score,
       breakdown,
       flags,
-      meta: { ...fallback.meta, engine: "onnx" },
+      // The model path never floors dimensions, so meta must not carry the
+      // rule engine's flooredDims (the displayed breakdown is the model's).
+      meta: {
+        engine: "onnx",
+        truncated: fallback.meta.truncated,
+        estimatedTokens: fallback.meta.estimatedTokens,
+        wordCount: fallback.meta.wordCount,
+        charCount: fallback.meta.charCount,
+      },
     };
   }
 
@@ -256,7 +264,15 @@ export class OnnxScoringAdapter implements ScoringAdapter {
       score,
       breakdown,
       flags,
-      meta: { ...fallback.meta, engine: "onnx" },
+      // The model path never floors dimensions, so meta must not carry the
+      // rule engine's flooredDims (the displayed breakdown is the model's).
+      meta: {
+        engine: "onnx",
+        truncated: fallback.meta.truncated,
+        estimatedTokens: fallback.meta.estimatedTokens,
+        wordCount: fallback.meta.wordCount,
+        charCount: fallback.meta.charCount,
+      },
     };
   }
 

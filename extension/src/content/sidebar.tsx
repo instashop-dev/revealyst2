@@ -1,6 +1,6 @@
 import { bandFor } from "@revealyst/scoring";
 import { useEffect, useRef, useState } from "react";
-import type { ScoreResult } from "@revealyst/scoring";
+import type { DimensionName, ScoreResult } from "@revealyst/scoring";
 import type { LocalHistoryEntry, Settings, Suggestion } from "../shared/types.js";
 import { appliedMessage, type AppliedFeedback } from "../lib/apply.js";
 import { STARTER_PROMPTS } from "../lib/templates.js";
@@ -246,19 +246,39 @@ export function Sidebar(props: SidebarProps) {
         </div>
         {props.result && (
           <div className="mt-3 grid grid-cols-5 gap-1">
-            {Object.entries(props.result.breakdown).map(([dim, value]) => (
-              <div key={dim} title={`${DIMENSION_LABELS[dim] ?? dim}: ${value}/100`}>
-                <div className="h-1.5 rounded bg-zinc-100">
-                  <div
-                    className={`h-1.5 rounded ${BAND_COLORS[bandFor(value)]}`}
-                    style={{ width: `${value}%` }}
-                  />
+            {Object.entries(props.result.breakdown).map(([dim, value]) => {
+              // Task-aware flooring auto-satisfies dimensions the prompt does
+              // not actually contain (e.g. role on a factual question). Those
+              // must render as "not needed", not a green bar that looks earned.
+              const floored = props.result.meta.flooredDims?.includes(dim as DimensionName);
+              const label = DIMENSION_LABELS[dim] ?? dim;
+              return (
+                <div
+                  key={dim}
+                  title={
+                    floored
+                      ? `${label}: not needed for this task — counted as satisfied`
+                      : `${label}: ${value}/100`
+                  }
+                >
+                  <div className="h-1.5 rounded bg-zinc-100">
+                    <div
+                      className={`h-1.5 rounded ${
+                        floored ? "bg-zinc-300" : BAND_COLORS[bandFor(value)]
+                      }`}
+                      style={{ width: `${value}%` }}
+                    />
+                  </div>
+                  <p
+                    className={`mt-0.5 truncate text-[9px] ${
+                      floored ? "text-zinc-300" : "text-zinc-400"
+                    }`}
+                  >
+                    {label}
+                  </p>
                 </div>
-                <p className="mt-0.5 truncate text-[9px] text-zinc-400">
-                  {DIMENSION_LABELS[dim] ?? dim}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
