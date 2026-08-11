@@ -3,19 +3,16 @@
  * Upload the prompt-scorer-v1 artifact to Cloudflare R2 (bucket
  * `revealyst-models`, key prefix `prompt-scorer-v1/`).
  *
- * The extension fetches the model at runtime from the bucket's public URL
- * (Transformers.js). Rules fall back automatically while the model is
- * unreachable, so a placeholder URL is safe.
+ * The extension fetches the model at runtime from the API worker's
+ * GET /models/* route (R2 binding → revealyst-models). Rules fall back
+ * automatically while the model is unreachable (spec §7).
  *
- * One-time bucket setup (documented in docs/runbook.md):
- *   1. npx wrangler r2 bucket create revealyst-models
- *   2. Cloudflare dashboard → R2 → revealyst-models → Settings → Public access
- *      → "Allow access to this bucket via a custom domain or r2.dev" → copy
- *      the pub-<hash>.r2.dev URL.
- *   3. Put that URL in extension/src/lib/model-config.ts as MODEL_BASE_URL
- *      (and in the web Settings hint if it surfaces the value).
+ * wrangler `r2 object` commands default to the LOCAL simulator — `--remote`
+ * is required to touch the real bucket (this burned the first upload: it
+ * "succeeded" into the simulator and the bucket stayed empty).
  *
- * Usage (requires CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID in env):
+ * Usage (requires CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID in env, or
+ * a wrangler login):
  *   node ml/scripts/upload.mjs
  */
 
@@ -64,21 +61,19 @@ function main() {
     }
     const key = `${PREFIX}/${file}`;
     console.log(`[upload] putting ${key} (${(statSync(local).size / 1e6).toFixed(2)} MB)...`);
-    execFileSync("npx", ["wrangler", "r2", "object", "put", `${BUCKET}/${key}`, "--file", local], {
-      stdio: "inherit",
-      cwd: ROOT,
-    });
+    execFileSync(
+      "npx",
+      ["wrangler", "r2", "object", "put", `${BUCKET}/${key}`, "--file", local, "--remote"],
+      { stdio: "inherit", cwd: ROOT },
+    );
   }
 
   const remaining = FILES.filter((f) => statSync(join(ARTIFACT_DIR, f), { throwIfNoEntry: false }));
   console.log(
-    `\n[upload] done — ${remaining.length}/${FILES.length} files in s3://${BUCKET}/${PREFIX}/`,
+    `\n[upload] done — ${remaining.length}/${FILES.length} files in s3://${BUCKET}/${PREFIX}/ (remote)`,
   );
   console.log(
-    `[upload] public base URL: https://pub-<hash>.r2.dev/${PREFIX}  (see runbook, step 2)`,
-  );
-  console.log(
-    `[upload] set extension MODEL_BASE_URL to that URL (extension/src/lib/model-config.ts).`,
+    `[upload] served by the API worker at https://revealyst-workers.thapi.workers.dev/models/${PREFIX}`,
   );
 }
 

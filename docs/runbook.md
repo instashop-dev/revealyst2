@@ -68,22 +68,34 @@ secrets): `gate` → `vectorize` → `workers` (deploy + `wrangler secret put`) 
 
 ### ONNX prompt-scorer model (spec §5.2)
 
-The extension loads the trained int8 scorer from Cloudflare R2 at runtime.
-One-time setup (no credentials were available to automate it):
+The extension loads the trained int8 scorer from Cloudflare R2 at runtime,
+served by the API worker's `GET /models/*` route (R2 binding `MODELS` →
+`revealyst-models`, see `workers/src/routes/models.ts`). `MODEL_BASE_URL` in
+`extension/src/lib/model-config.ts` already points at
+`https://revealyst-workers.thapi.workers.dev/models/prompt-scorer-v1`.
+
+One-time setup (uploading the artifact to R2):
 
 1. `npx wrangler r2 bucket create revealyst-models` (also done by the `models`
-   deploy job).
-2. Cloudflare dashboard → **R2 → revealyst-models → Settings → Public access**
-   → _Allow access to this bucket via a custom domain or r2.dev_ → copy the
-   `pub-<hash>.r2.dev` URL.
-3. Set `MODEL_BASE_URL` in `extension/src/lib/model-config.ts` to
-   `https://pub-<hash>.r2.dev/prompt-scorer-v1` and ship it.
+   deploy job; skips silently when it exists).
+2. Upload the artifact — the deploy `models` job runs
+   `node ml/scripts/upload.mjs` automatically, or manually:
+   `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` set, or
+   `npx wrangler r2 object put revealyst-models/prompt-scorer-v1/<file> --file ...`
+   for each file under `ml/models/prompt-scorer-v1/` (onnx/model_quantized.onnx,
+   config.json, tokenizer*.json, vocab.txt, special_tokens_map.json, head.json).
+3. Verify: `curl -sI https://revealyst-workers.thapi.workers.dev/models/prompt-scorer-v1/head.json`
+   → 200. The worker's `models` route returns the R2 object with `Cache-Control:
+public, max-age=3600, immutable`.
 
-Until step 2/3 are done the model URL is a placeholder: the extension logs a
+Note: the R2 bucket's r2.dev public URL was found unreliable on this account
+(404/401 even after enabling) — hence the worker-served route, which is also
+the production-recommended pattern. If you later attach a custom domain
+(`models.revealyst.com`), update `MODEL_BASE_URL` to match.
+
+Until the artifacts are uploaded the model URL 404s: the extension logs a
 `modelError` and scores with the rule engine (spec §7 fallback) — the product
-keeps working, only the local-model path is inert. Uploads run automatically
-on deploy (`node ml/scripts/upload.mjs`), or manually with
-`CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` set.
+keeps working, only the local-model path is inert.
 
 Retraining (rule distillation until human-labeled data exists):
 

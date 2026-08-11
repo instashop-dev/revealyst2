@@ -19,6 +19,11 @@ index_name = "prompt-patterns"
 # spec §5.3 vectorize+llm pipeline.
 remote = true
 
+# ONNX prompt-scorer artifacts (spec §5.2) — served publicly by GET /models/*.
+[[r2_buckets]]
+binding = "MODELS"
+bucket_name = "revealyst-models"
+
 [observability]
 enabled = true
 

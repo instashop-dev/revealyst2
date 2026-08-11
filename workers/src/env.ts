@@ -1,4 +1,4 @@
-import type { Hyperdrive, VectorizeIndex } from "@cloudflare/workers-types";
+import type { Hyperdrive, R2Bucket, VectorizeIndex } from "@cloudflare/workers-types";
 import type { SqlDb } from "@revealyst/db";
 
 /** Worker bindings (wrangler.toml vars + secrets). */
@@ -28,6 +28,9 @@ export interface WorkerEnv {
   VECTORIZE?: VectorizeIndex;
   /** Hyperdrive proxy for AWS RDS; preferred over DATABASE_URL. */
   HYPERDRIVE?: Hyperdrive;
+  /** R2 bucket with the prompt-scorer artifacts (spec §5.2) — served by
+   *  GET /models/* so the extension can fetch them over HTTPS. */
+  MODELS?: R2Bucket;
   /** Test seam: pre-built SqlDb overrides the postgres.js connection. */
   _DB?: SqlDb;
 }
