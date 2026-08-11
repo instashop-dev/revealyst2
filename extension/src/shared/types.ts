@@ -74,35 +74,102 @@ export interface LocalHistoryEntry {
   createdAt: string;
 }
 
-/** Client-side static tips (spec §7): shown when the suggestion network
- *  request fails and no server fallback is reachable. */
-export const CLIENT_TIPS: Suggestion[] = [
-  {
-    // Advisory: the extension never sees the task, so it never fabricates a
-    // role ("Act as a QA specialist") — the user completes the role themselves.
-    id: "add_role",
-    type: "add_role",
-    text: "Say what perspective the AI should take — for example the role, the reader, or the goal you want the response to serve.",
-    preview: "",
+/** One coaching tip for a single deficiency flag (see clientTipsFor). */
+interface FlagTip {
+  flag: string;
+  make: () => Suggestion;
+}
+
+const ROLE_TIP: Suggestion = {
+  // Advisory: the extension never sees the task, so it never fabricates a
+  // role ("Act as a QA specialist") — the user completes the role themselves.
+  id: "add_role",
+  type: "add_role",
+  text: "Say what perspective the AI should take — for example the role, the reader, or the goal you want the response to serve.",
+  preview: "",
+  action: "append",
+  advisory: true,
+};
+
+const OUTPUT_FORMAT_TIP: Suggestion = {
+  id: "add_output_format",
+  type: "add_output_format",
+  text: 'Tell the AI exactly how to respond, e.g. "Answer as a bulleted list."',
+  preview: "Answer as a bulleted list. ",
+  action: "append",
+};
+
+const CONTEXT_TIP: Suggestion = {
+  id: "add_context",
+  type: "add_context",
+  text: "Add who it is for, why you need it, and what you already know.",
+  preview:
+    " Add 2-3 sentences of background: who this is for, why you need it, and what you already know.",
+  action: "append",
+};
+
+function makeSpecificityTip(): Suggestion {
+  return {
+    id: "add_specifics",
+    type: "add_specifics",
+    text: "Replace vague words with concrete details — names, numbers, and exact requirements.",
+    preview: " Add concrete details: names, numbers, and exact requirements. ",
     action: "append",
-    advisory: true,
-  },
-  {
-    id: "add_output_format",
-    type: "add_output_format",
-    text: 'Tell the AI exactly how to respond, e.g. "Answer as a bulleted list."',
-    preview: "Answer as a bulleted list. ",
+  };
+}
+
+function makeExamplesTip(): Suggestion {
+  return {
+    id: "add_examples",
+    type: "add_examples",
+    text: "Add an example so the AI can match the style, tone or output you want.",
+    preview: " Include an example of the style or tone you want. ",
     action: "append",
-  },
-  {
-    id: "add_context",
-    type: "add_context",
-    text: "Add who it is for, why you need it, and what you already know.",
-    preview:
-      " Add 2-3 sentences of background: who this is for, why you need it, and what you already know.",
+  };
+}
+
+function makeShortTip(): Suggestion {
+  return {
+    id: "add_details",
+    type: "add_details",
+    text: "Expand the prompt: say who it is for, what you need, and any constraints.",
+    preview: " Expand this with details: who it is for, what you need, and any constraints. ",
     action: "append",
-  },
-];
+  };
+}
+
+/**
+ * Client-side static tips (spec §7): shown when the suggestion network
+ * request fails and no server fallback is reachable. Flag-aware — only tips
+ * that match the prompt's actual deficiencies are returned, so a green prompt
+ * never gets "Answer as a bulleted list" and the examples/specificity
+ * dimensions are coached too (previously a fixed 3-tip list covered only
+ * role/format/context). At most 3, spread across distinct deficiencies;
+ * actionable tips (with an Apply preview) come before the advisory role tip.
+ */
+export function clientTipsFor(flags: string[]): Suggestion[] {
+  const flagSet = new Set(flags);
+  const tips: Suggestion[] = [];
+  const byFlag: FlagTip[] = [
+    { flag: "too_short", make: makeShortTip },
+    { flag: "low_specificity", make: makeSpecificityTip },
+    { flag: "vague_context", make: () => CONTEXT_TIP },
+    { flag: "missing_context", make: () => CONTEXT_TIP },
+    { flag: "missing_output_format", make: () => OUTPUT_FORMAT_TIP },
+    { flag: "no_examples", make: makeExamplesTip },
+    { flag: "missing_role", make: () => ROLE_TIP },
+  ];
+  for (const { flag, make } of byFlag) {
+    if (!flagSet.has(flag)) continue;
+    const tip = make();
+    // vague_context + missing_context share one context tip — never show it
+    // twice.
+    if (tips.some((t) => t.id === tip.id)) continue;
+    tips.push(tip);
+    if (tips.length >= 3) break;
+  }
+  return tips;
+}
 
 export const STORAGE_KEYS = {
   settings: "revealyst:settings",
