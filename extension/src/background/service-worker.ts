@@ -1,10 +1,13 @@
 import {
+  fetchMe,
   fetchSuggestions,
   fetchTeams,
   logEvent,
   postFeedback,
+  requestMagicLink,
   saveToLibrary,
   sha256Hex,
+  verifyMagicToken,
 } from "./api.js";
 
 export type ExtensionMessage =
@@ -30,7 +33,10 @@ export type ExtensionMessage =
       apiBase: string;
     }
   | { type: "GET_TEAMS"; token: string; apiBase: string }
-  | { type: "HASH"; text: string };
+  | { type: "HASH"; text: string }
+  | { type: "GET_ME"; token: string; apiBase: string }
+  | { type: "REQUEST_MAGIC_LINK"; email: string; apiBase: string }
+  | { type: "VERIFY_MAGIC_TOKEN"; token: string; apiBase: string };
 
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
   void (async () => {
@@ -66,6 +72,19 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
         break;
       case "HASH":
         sendResponse(await sha256Hex(message.text));
+        break;
+      // Popup connect flows (toolbar action): the popup validates its token
+      // against /api/auth/me and exchanges email magic links for a session
+      // token. Errors bubble to the catch below as { error, status }.
+      case "GET_ME":
+        sendResponse({ email: (await fetchMe(message.apiBase, message.token)).email });
+        break;
+      case "REQUEST_MAGIC_LINK":
+        await requestMagicLink(message.apiBase, message.email);
+        sendResponse({ ok: true });
+        break;
+      case "VERIFY_MAGIC_TOKEN":
+        sendResponse(await verifyMagicToken(message.apiBase, message.token));
         break;
       default:
         sendResponse(undefined);
