@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { applySuggestion, getInputText, setInputText } from "../src/lib/apply.js";
+import { appliedMessage, applySuggestion, getInputText, setInputText } from "../src/lib/apply.js";
 import type { Suggestion } from "../src/shared/types.js";
 
 describe("suggestion application (spec §5.3 one-click apply)", () => {
@@ -55,5 +55,23 @@ describe("suggestion application (spec §5.3 one-click apply)", () => {
     setInputText(ta, "after");
     expect(getInputText(ta)).toBe("after");
     expect(events).toBeGreaterThan(0);
+  });
+});
+
+describe("appliedMessage (one-click loop closure)", () => {
+  it("celebrates a score improvement with the delta", () => {
+    expect(appliedMessage({ preview: "X", before: 54, after: 78 })).toBe(
+      "Score improved 54 → 78 🎉",
+    );
+  });
+
+  it("stays neutral when the score did not move", () => {
+    expect(appliedMessage({ preview: "X", before: 54, after: 54 })).toBe("Applied ✓");
+    expect(appliedMessage({ preview: "X", before: 80, after: 72 })).toBe("Applied ✓");
+  });
+
+  it("handles the pre-re-score state (after not yet known)", () => {
+    expect(appliedMessage({ preview: "X", before: 54, after: null })).toBe("Applied ✓");
+    expect(appliedMessage({ preview: "X", before: null, after: null })).toBe("Applied ✓");
   });
 });

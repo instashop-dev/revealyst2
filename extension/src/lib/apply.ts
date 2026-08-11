@@ -57,3 +57,23 @@ export function isEditable(el: HTMLElement | null): el is HTMLElement {
     (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement || el.isContentEditable)
   );
 }
+
+/**
+ * One-click apply feedback (spec §5.3 loop closure): after the user applies
+ * a suggestion the prompt is re-scored, and the sidebar shows the score
+ * delta so the coaching loop is visibly "working". `before` is the score at
+ * apply time (null when nothing was scored yet), `after` the re-score.
+ */
+export interface AppliedFeedback {
+  preview: string;
+  before: number | null;
+  after: number | null;
+}
+
+/** Human-readable line for the applied state (exported for tests). */
+export function appliedMessage(feedback: AppliedFeedback): string {
+  if (feedback.before != null && feedback.after != null && feedback.after > feedback.before) {
+    return `Score improved ${feedback.before} → ${feedback.after} 🎉`;
+  }
+  return "Applied ✓";
+}

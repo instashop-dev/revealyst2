@@ -6,7 +6,13 @@ import type { ScoreEventPayload } from "../shared/types.js";
 import { CLIENT_TIPS } from "../shared/types.js";
 import styles from "./styles.css?inline";
 import { detectPlatform, findInput, waitForInput, type PlatformDef } from "../lib/platform.js";
-import { applySuggestion, getInputText, isEditable, setInputText } from "../lib/apply.js";
+import {
+  applySuggestion,
+  getInputText,
+  isEditable,
+  setInputText,
+  type AppliedFeedback,
+} from "../lib/apply.js";
 import { createDebouncedScorer, scorePrompt } from "../lib/scoring.js";
 import {
   appendLocalHistory,
@@ -87,7 +93,7 @@ async function mainUnsafe(): Promise<void> {
   let suggestions: Suggestion[] = [];
   let suggestionSource: "vectorize+llm" | "static" | null = null;
   let busy = false;
-  let lastApplied: string | null = null;
+  let appliedFeedback: AppliedFeedback | null = null;
   let statusMessage: string | null = null;
   let statusTimer: ReturnType<typeof setTimeout> | null = null;
   let showOnboarding = !(await isOnboarded());
@@ -116,7 +122,7 @@ async function mainUnsafe(): Promise<void> {
         onboardingSampleActive,
         inputMissing,
         truncated: result?.meta.truncated ?? false,
-        lastApplied,
+        appliedFeedback,
         statusMessage,
         thumbsVisible,
         ratedValue,
@@ -324,13 +330,14 @@ async function mainUnsafe(): Promise<void> {
     // know the user's task) — nothing to apply.
     if (suggestion.advisory || !suggestion.preview) return;
     if (!isEditable(input)) return;
-    lastApplied = suggestion.preview;
-    // Clear the "Applied:" line after a few seconds instead of leaving it
+    const before = result?.score ?? null;
+    appliedFeedback = { preview: suggestion.preview, before, after: null };
+    // Clear the "Applied …" line after a few seconds instead of leaving it
     // forever.
     setTimeout(() => {
-      lastApplied = null;
+      appliedFeedback = null;
       rerender();
-    }, 5000);
+    }, 6000);
     applySuggestion(input, suggestion);
     // Record acceptance feedback (spec §5.6 suggestions_feedback) when the
     // user has connected their account; silent otherwise (no account yet).
@@ -345,9 +352,13 @@ async function mainUnsafe(): Promise<void> {
         })
         .catch(() => undefined);
     }
-    // Re-score immediately after the suggestion is applied.
+    // Re-score immediately after the suggestion is applied; the new score
+    // fills the delta in the "Applied …" feedback (loop closure, §5.3).
     const text = getInputText(input);
-    void scorePrompt(text).then(onScored);
+    void scorePrompt(text).then((update) => {
+      if (appliedFeedback) appliedFeedback.after = update.result.score;
+      onScored(update);
+    });
     rerender();
   }
 
