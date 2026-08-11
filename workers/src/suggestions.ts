@@ -280,12 +280,26 @@ export function normalizeSuggestions(raw: unknown): Suggestion[] {
   return out;
 }
 
+/**
+ * A static preview must be a neutral imperative: no placeholders and no
+ * invented facts about the user ("onboarding flows", "our last blog post").
+ * The same rules the LLM path enforces (see LLM_SYSTEM_PROMPT) — applied to
+ * the static set as defense in depth, so a bad seed can never reach the
+ * one-click Apply button.
+ */
+export function isSafeStaticPreview(preview: string): boolean {
+  if (/\[|\]|\{|\}|\.\.\.|…/.test(preview)) return false;
+  if (/for context[:：]?\s+(we|our|i|my|the team)\b/i.test(preview)) return false;
+  return true;
+}
+
 /** Deterministic fallback selection: most matching flags, then priority. */
 export function selectStaticPatterns(flags: string[]): PromptPattern[] {
-  const scored = STATIC_PATTERNS.map((pattern) => {
-    const matches = pattern.fixes_flags.filter((f) => flags.includes(f)).length;
-    return { pattern, matches };
-  })
+  const scored = STATIC_PATTERNS.filter((pattern) => isSafeStaticPreview(pattern.preview))
+    .map((pattern) => {
+      const matches = pattern.fixes_flags.filter((f) => flags.includes(f)).length;
+      return { pattern, matches };
+    })
     .filter((entry) => entry.matches > 0)
     .sort((a, b) => b.matches - a.matches || a.pattern.priority - b.pattern.priority);
 
@@ -427,7 +441,7 @@ export const STATIC_PATTERNS: PromptPattern[] = [
     id: "p_spec_3",
     category: "improve_specificity",
     pattern_text: "Name the exact topic instead of describing it vaguely.",
-    preview: " Focus specifically on onboarding flows for new users. ",
+    preview: " Name the exact topic or scenario you want the answer to cover. ",
     fixes_flags: ["low_specificity"],
     priority: 3,
   },
@@ -435,7 +449,7 @@ export const STATIC_PATTERNS: PromptPattern[] = [
     id: "p_ex_1",
     category: "add_examples",
     pattern_text: "Add an example so the AI matches the expected style.",
-    preview: " For example: like this — \u201cTurn every prompt into a step forward.\u201d ",
+    preview: " Include an example of the style or tone you want. ",
     fixes_flags: ["no_examples"],
     priority: 1,
   },
@@ -443,7 +457,7 @@ export const STATIC_PATTERNS: PromptPattern[] = [
     id: "p_ex_2",
     category: "add_examples",
     pattern_text: "Show an input/output pair as a template.",
-    preview: " Example input: ... / Example output: ... ",
+    preview: " Show one example input and the output you expect, as a template. ",
     fixes_flags: ["no_examples"],
     priority: 2,
   },
@@ -451,7 +465,7 @@ export const STATIC_PATTERNS: PromptPattern[] = [
     id: "p_ex_3",
     category: "add_examples",
     pattern_text: "Point at a past piece you want the answer to resemble.",
-    preview: " Use the tone of our last blog post as a reference. ",
+    preview: " Point at a past piece of writing whose style you want the answer to match. ",
     fixes_flags: ["no_examples"],
     priority: 3,
   },
