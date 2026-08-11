@@ -32,6 +32,16 @@ export interface SuggestionResult {
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const SUGGESTION_MODEL = "gpt-4o-mini";
 
+/**
+ * End-to-end cap for the vectorize+llm pipeline. The pipeline internally
+ * retries each OpenAI call twice with 15s timeouts, so a fully degraded
+ * upstream could keep the sidebar waiting ~60s before the static fallback
+ * (PMF review: latency in the core score → suggest → apply loop). Racing the
+ * whole pipeline against this deadline makes the fallback arrive in a few
+ * seconds instead of a minute.
+ */
+const SUGGESTION_TIMEOUT_MS = 10_000;
+
 const LLM_SYSTEM_PROMPT = `You are the suggestion engine of Revealyst, an AI prompt coaching tool.
 Given the deficiencies of a user's prompt and up to 3 retrieved prompt-improvement patterns, produce
 a JSON object with a "suggestions" array of at most 3 actionable, one-click suggestions.
@@ -71,22 +81,24 @@ Return only valid JSON, nothing else.`;
  * generic tips when even the static set has nothing (spec §7: retry once,
  * then fall back).
  */
-export async function getSuggestions(flags: string[], env: WorkerEnv): Promise<SuggestionResult> {
+export async function getSuggestions(
+  flags: string[],
+  env: WorkerEnv,
+  timeoutMs: number = SUGGESTION_TIMEOUT_MS,
+): Promise<SuggestionResult> {
   const deficiencies = flags.length > 0 ? flags : ["low_specificity"];
   const queryText = describeDeficiency(deficiencies);
 
   try {
-    const vector = await withRetry(() => embed(queryText, env.OPENAI_API_KEY));
-    if (!env.VECTORIZE) throw new Error("VECTORIZE binding unavailable");
-    const patterns = await queryPatterns(env.VECTORIZE, vector);
-    if (patterns.length === 0) throw new Error("no patterns matched");
-    const suggestions = await withRetry(() =>
-      generateSuggestions(patterns, deficiencies, env.OPENAI_API_KEY),
-    );
-    // Deterministic guards can drop fabricated/placeholder output; if nothing
-    // usable survives, degrade to the static set instead of showing nothing.
-    if (suggestions.length === 0) throw new Error("no usable suggestions");
-    return { suggestions, source: "vectorize+llm" };
+    // The whole pipeline is raced against a deadline: any step (embedding,
+    // Vectorize, LLM) that exceeds it fails fast into the static fallback
+    // below instead of letting the per-call retries stack up to ~60s.
+    return await Promise.race([
+      runPipeline(queryText, deficiencies, env),
+      delay(timeoutMs).then(() => {
+        throw new Error(`suggestion pipeline timed out after ${timeoutMs}ms`);
+      }),
+    ]);
   } catch (error) {
     console.error(
       `[suggestions] vectorize+llm failed, using static fallback: ${(error as Error).message ?? error}`,
@@ -105,6 +117,29 @@ export async function getSuggestions(flags: string[], env: WorkerEnv): Promise<S
     }
     return { suggestions, source: "static" };
   }
+}
+
+/** The embed → Vectorize → LLM chain (extracted so it can be raced). */
+async function runPipeline(
+  queryText: string,
+  deficiencies: string[],
+  env: WorkerEnv,
+): Promise<SuggestionResult> {
+  const vector = await withRetry(() => embed(queryText, env.OPENAI_API_KEY));
+  if (!env.VECTORIZE) throw new Error("VECTORIZE binding unavailable");
+  const patterns = await queryPatterns(env.VECTORIZE, vector);
+  if (patterns.length === 0) throw new Error("no patterns matched");
+  const suggestions = await withRetry(() =>
+    generateSuggestions(patterns, deficiencies, env.OPENAI_API_KEY),
+  );
+  // Deterministic guards can drop fabricated/placeholder output; if nothing
+  // usable survives, degrade to the static set instead of showing nothing.
+  if (suggestions.length === 0) throw new Error("no usable suggestions");
+  return { suggestions, source: "vectorize+llm" };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** "Fix a prompt that is missing output format and has vague context." */
