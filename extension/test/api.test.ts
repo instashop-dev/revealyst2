@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  fetchMe,
   fetchSuggestions,
   fetchTeams,
   logEvent,
   postFeedback,
+  requestMagicLink,
   saveToLibrary,
+  verifyMagicToken,
 } from "../src/background/api.js";
 
 const BASE = "https://revealyst-workers.thapi.workers.dev";
@@ -180,5 +183,67 @@ describe("background API client", () => {
     await expect(
       saveToLibrary(BASE, { team_id: "t", prompt_text: "x", score: 50 }),
     ).rejects.toThrow("Already saved");
+  });
+
+  it("validates a session token against /api/auth/me (popup token connect)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ id: "u1", email: "jamie@acme.com", plan: "free", is_admin: false }),
+        ),
+    );
+    const me = await fetchMe(BASE, "token-abc");
+    expect(me.email).toBe("jamie@acme.com");
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`${BASE}/api/auth/me`);
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer token-abc");
+  });
+
+  it("rejects an invalid session token with a 401 status (popup)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "unauthorized" }, 401)));
+    try {
+      await fetchMe(BASE, "bad-token");
+      expect.unreachable("fetchMe should throw on 401");
+    } catch (err) {
+      expect((err as { status: number }).status).toBe(401);
+    }
+  });
+
+  it("requests a magic link email (popup email path)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ message: "link sent" })));
+    await requestMagicLink(BASE, "jamie@acme.com");
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`${BASE}/api/auth/magic`);
+    expect(JSON.parse(init.body as string)).toEqual({ email: "jamie@acme.com" });
+  });
+
+  it("exchanges a magic-link token for a session token (popup)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ token: "session-1", user: { email: "jamie@acme.com" } })),
+    );
+    const res = await verifyMagicToken(BASE, "magic-1");
+    expect(res.token).toBe("session-1");
+    expect(res.email).toBe("jamie@acme.com");
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`${BASE}/api/auth/verify`);
+    expect(JSON.parse(init.body as string)).toEqual({ token: "magic-1" });
+  });
+
+  it("surfaces a 401 when the magic link is invalid or used (popup)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ error: "invalid_token" }, 401)),
+    );
+    try {
+      await verifyMagicToken(BASE, "used-token");
+      expect.unreachable("verifyMagicToken should throw on 401");
+    } catch (err) {
+      expect((err as { status: number }).status).toBe(401);
+    }
   });
 });

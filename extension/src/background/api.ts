@@ -111,12 +111,41 @@ export async function fetchTeams(
 }
 
 export async function requestMagicLink(apiBase: string, email: string): Promise<void> {
-  const res = await fetch(`${apiBase}/api/auth/magic`, {
+  const res = await fetchWithRetry(`${apiBase}/api/auth/magic`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
-  if (!res.ok) throw new Error(`magic link failed: ${res.status}`);
+  if (!res.ok) throw new ApiHttpError(res.status, `magic link failed: ${res.status}`);
+}
+
+/** Fetch the current user for a session token — validates the token
+ *  (popup "Connect with token" path). Throws ApiHttpError(401) when invalid. */
+export async function fetchMe(
+  apiBase: string,
+  token: string,
+): Promise<{ id: string; email: string; plan: string; is_admin: boolean }> {
+  const res = await fetchWithRetry(`${apiBase}/api/auth/me`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new ApiHttpError(res.status, `me failed: ${res.status}`);
+  return (await res.json()) as { id: string; email: string; plan: string; is_admin: boolean };
+}
+
+/** Exchange a magic-link token for a session token (popup email path). */
+export async function verifyMagicToken(
+  apiBase: string,
+  token: string,
+): Promise<{ token: string; email: string }> {
+  const res = await fetchWithRetry(`${apiBase}/api/auth/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) throw new ApiHttpError(res.status, `verify failed: ${res.status}`);
+  const body = (await res.json()) as { token: string; user?: { email?: string } };
+  return { token: body.token, email: body.user?.email ?? "" };
 }
 
 export { sha256Hex };
