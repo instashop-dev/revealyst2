@@ -13,7 +13,7 @@ const BADGES: Array<{
   {
     id: "first-green",
     name: "First Green",
-    desc: "Score ≥70 on your first prompt",
+    desc: "Score your first green prompt (≥70)",
     check: (s) => s.green_count > 0,
   },
   {
@@ -37,7 +37,7 @@ const BADGES: Array<{
   {
     id: "first-week",
     name: "First Week Challenge",
-    desc: "Score 5 green prompts (≥70) in your first week",
+    desc: "Score 5 green prompts (≥70) in any 7 days",
     check: (s: StatsResponse) => s.green_count >= 5,
   },
   {

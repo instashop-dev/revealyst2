@@ -24,6 +24,8 @@ export function LibraryPage() {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
   const [openText, setOpenText] = useState<Record<string, string>>({});
   const [versionsById, setVersionsById] = useState<Record<string, LibraryVersion[]>>({});
@@ -71,6 +73,7 @@ export function LibraryPage() {
           if (!cancelled) {
             setCards(res.prompts);
             setTotal(res.total);
+            setPage(1);
           }
         })
         .catch((e) => {
@@ -85,6 +88,28 @@ export function LibraryPage() {
       clearTimeout(timer);
     };
   }, [session?.token, selectedTeamId, search, tag, minScore, sort, refreshKey]);
+
+  /** Append the next page of results (the API caps each page at 20). */
+  async function loadMore() {
+    if (!session || !selectedTeamId || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.libraryList(session.token, selectedTeamId, {
+        search: search || undefined,
+        tag: tag || undefined,
+        minScore: minScore || undefined,
+        sort,
+        page: page + 1,
+      });
+      setCards((prev) => [...prev, ...res.prompts]);
+      setTotal(res.total);
+      setPage((p) => p + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load more prompts");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function copyPrompt(id: string) {
     if (!session) return;
@@ -475,9 +500,15 @@ export function LibraryPage() {
       </div>
 
       {total > cards.length && (
-        <p className="text-sm text-zinc-400">
-          {cards.length} of {total} shown — refine the search to narrow results.
-        </p>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+          >
+            {loadingMore ? "Loading…" : `Load more (${cards.length} of ${total} shown)`}
+          </button>
+        </div>
       )}
     </div>
   );
