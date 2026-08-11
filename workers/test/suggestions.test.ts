@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   describeDeficiency,
+  getSuggestions,
   isSafeStaticPreview,
   normalizeSuggestions,
   selectStaticPatterns,
@@ -194,5 +195,107 @@ describe("normalizeSuggestions", () => {
       },
     ]);
     expect(out).toHaveLength(2);
+  });
+});
+
+describe("getSuggestions end-to-end timeout (PMF review)", () => {
+  it("falls back to static tips quickly when the upstream pipeline hangs", async () => {
+    // The pipeline retries each OpenAI call twice with 15s timeouts, so a
+    // fully degraded upstream could otherwise keep the sidebar waiting ~60s.
+    // The whole chain is raced against a deadline — the static fallback must
+    // arrive in milliseconds.
+    const originalFetch = globalThis.fetch;
+    // Never-settling fetch: the embed step hangs forever, exactly like a
+    // black-holed upstream.
+    globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+    try {
+      const started = Date.now();
+      const result = await getSuggestions(
+        ["missing_output_format"],
+        {
+          OPENAI_API_KEY: "test-key",
+          VECTORIZE: {},
+        } as unknown as Parameters<typeof getSuggestions>[1],
+        50,
+      );
+      expect(Date.now() - started).toBeLessThan(2000);
+      expect(result.source).toBe("static");
+      expect(result.suggestions.length).toBeGreaterThan(0);
+      // The deterministic fallback for missing_output_format kicks in.
+      expect(result.suggestions[0]!.id).toBe("p_format_1");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("returns the vectorize+llm result when the pipeline stays within budget", async () => {
+    const originalFetch = globalThis.fetch;
+    const embedOk = new Response(
+      JSON.stringify({ data: [{ embedding: new Array(1536).fill(0.1) }] }),
+      { status: 200 },
+    );
+    const suggestOk = new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                suggestions: [
+                  {
+                    id: "add_context",
+                    type: "add_context",
+                    text: "Add background.",
+                    preview: " Add 2-3 sentences of background: who this is for.",
+                    action: "append",
+                  },
+                ],
+              }),
+            },
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("/embeddings")) return embedOk;
+      if (url.includes("/chat/completions")) return suggestOk;
+      return new Response("{}", { status: 500 });
+    }) as typeof fetch;
+    const vectorize = {
+      query: async () => ({
+        matches: [
+          {
+            metadata: {
+              id: "p_ctx_1",
+              category: "add_context",
+              pattern_text: "Add background.",
+              preview: " Add 2-3 sentences of background: who this is for.",
+              fixes_flags: ["vague_context"],
+              priority: 1,
+            },
+          },
+        ],
+      }),
+    };
+    try {
+      const result = await getSuggestions(
+        ["vague_context"],
+        {
+          OPENAI_API_KEY: "test-key",
+          VECTORIZE: vectorize,
+        } as unknown as Parameters<typeof getSuggestions>[1],
+        2000,
+      );
+      expect(result.source).toBe("vectorize+llm");
+      // The LLM suggestion survives the deterministic guards.
+      expect(result.suggestions[0]!.id).toBe("add_context");
+      expect(calls.some((c) => c.includes("/embeddings"))).toBe(true);
+      expect(calls.some((c) => c.includes("/chat/completions"))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
