@@ -1,4 +1,4 @@
-import { RuleScoringEngine, deriveFlags } from "./rules.js";
+import { RuleScoringEngine, RULES_REVISION, deriveFlags } from "./rules.js";
 import type { ScoringAdapter } from "./adapter.js";
 import type { ScoreResult, ScoringOptions } from "./types.js";
 import { DIMENSIONS } from "./types.js";
@@ -52,6 +52,13 @@ export interface OnnxHead {
   pooling?: "mean";
   activation?: "sigmoid";
   dim_names?: string[];
+  /**
+   * Rules revision the model was distilled from (ml/python/train.py writes
+   * it, synced with RULES_REVISION in rules.ts). A model trained on an older
+   * revision must not override the current rule heuristics, so the adapter
+   * falls back to rules when this does not match. Absent = legacy artifact.
+   */
+  rules_rev?: number;
 }
 
 type TransformersPipeline = (input: string, options?: unknown) => Promise<unknown>;
@@ -216,6 +223,14 @@ export class OnnxScoringAdapter implements ScoringAdapter {
   ): Promise<ScoreResult> {
     const head = await this.loadHead();
     if (!head) throw new Error("regression head unavailable");
+    if (head.rules_rev !== RULES_REVISION) {
+      // The model is a distillation of the rule engine: a stale head would
+      // silently keep the old (fixed) heuristics in production. Fall back to
+      // the current rules until the model is retrained against this revision.
+      throw new Error(
+        `model out of date (rules rev ${head.rules_rev ?? "legacy"}, expected ${RULES_REVISION})`,
+      );
+    }
     const embedding = toFloatArray(raw);
     const expected = head.weight[0]?.length ?? 0;
     if (!embedding || expected === 0 || embedding.length !== expected) {

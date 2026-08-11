@@ -195,12 +195,16 @@ def main() -> None:
     print(f"[train] best checkpoint eval: mean_mae={final['mean']:.2f} overall={final['overall']:.2f}")
 
     # Persist: head.json (runtime artifact) + fine-tuned backbone (for ONNX re-export).
+    # rules_rev MUST match RULES_REVISION in packages/scoring/src/rules.ts — the
+    # OnnxScoringAdapter rejects a head whose rules_rev is stale, so a model
+    # retrained against the current heuristics is the only one that runs.
     head = {
         "weight": model.head.weight.detach().cpu().numpy().tolist(),
         "bias": model.head.bias.detach().cpu().numpy().tolist(),
         "pooling": "mean",
         "activation": "sigmoid",
         "dim_names": ["overall"] + DIM_ORDER,
+        "rules_rev": 2,
     }
     head_path = f"{args.output}/head.json"
     with open(head_path, "w", encoding="utf-8") as f:

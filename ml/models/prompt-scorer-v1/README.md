@@ -46,3 +46,9 @@ exists. Swap the artifact + retrain when real labels arrive.
   local approximation of it. When the model cannot load (offline, CSP, host
   outage), `OnnxScoringAdapter` falls back to rules with `modelError` surfaced
   in `result.meta` (spec §7) — never a broken feature.
+- **Revision gate:** `head.json` carries `rules_rev`, which must equal
+  `RULES_REVISION` in `packages/scoring/src/rules.ts`. The adapter rejects a
+  stale head (falls back to rules) so an old distillation can never override
+  current heuristics. This artifact is `rules_rev: 1` (trained on the original
+  rules); retrain against the current rules (train.py writes `rules_rev: 2`)
+  and upload the new head before the model path is used again.

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OnnxScoringAdapter } from "../src/onnx-adapter.js";
+import { RULES_REVISION } from "../src/rules.js";
 
 /**
  * ONNX adapter output-contract tests (spec §5.2 + §7). The optional
@@ -87,6 +88,7 @@ describe("OnnxScoringAdapter feature-extraction + regression head (prompt-scorer
     bias: new Array<number>(6).fill(0),
     pooling: "mean" as const,
     activation: "sigmoid" as const,
+    rules_rev: RULES_REVISION,
     dim_names: [
       "overall",
       "specificity",
@@ -169,6 +171,36 @@ describe("OnnxScoringAdapter feature-extraction + regression head (prompt-scorer
     const result = await adapter.score("hi");
     expect(result.meta.engine).toBe("rules");
     expect(result.meta.modelError).toBe("unexpected embedding shape");
+  });
+
+  it("falls back to rules when the head was distilled from an older rules revision", async () => {
+    vi.doMock("@xenova/transformers", () => ({ pipeline: async () => pipeline }));
+    currentOutput = oneHotEmbedding();
+    const staleHead = { ...head, rules_rev: (RULES_REVISION - 1) as number };
+    const adapter = new OnnxScoringAdapter({
+      modelId: "revealyst/prompt-scorer-v1",
+      task: "feature-extraction",
+      head: staleHead,
+    });
+    const result = await adapter.score("Help me write something good.");
+    expect(result.meta.engine).toBe("rules");
+    expect(result.meta.modelError).toContain("model out of date");
+    expect(adapter.engineKind).toBe("rules");
+  });
+
+  it("falls back to rules when the head has no rules_rev (legacy artifact)", async () => {
+    vi.doMock("@xenova/transformers", () => ({ pipeline: async () => pipeline }));
+    currentOutput = oneHotEmbedding();
+    const { rules_rev, ...legacyHead } = head;
+    void rules_rev;
+    const adapter = new OnnxScoringAdapter({
+      modelId: "revealyst/prompt-scorer-v1",
+      task: "feature-extraction",
+      head: legacyHead,
+    });
+    const result = await adapter.score("Help me write something good.");
+    expect(result.meta.engine).toBe("rules");
+    expect(result.meta.modelError).toContain("legacy");
   });
 
   it("uses an injected pipelineFactory instead of the dynamic import", async () => {

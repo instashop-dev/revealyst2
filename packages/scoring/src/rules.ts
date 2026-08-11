@@ -17,6 +17,15 @@ export const DEFAULT_MAX_TOKENS = 4000;
 export const DEFAULT_TRUNCATE_TO = 1000;
 const CHARS_PER_TOKEN = 4;
 
+/**
+ * Bump when the scoring heuristics change the score/flags for existing
+ * prompts. The ONNX scorer (prompt-scorer-v1) is a distillation of these
+ * rules: a model trained on an older revision must not override the current
+ * rules (see OnnxScoringAdapter's rules_rev gate), so a stale model falls
+ * back to the rule engine until it is retrained against the new revision.
+ */
+export const RULES_REVISION = 2;
+
 const DIMENSION_WEIGHTS = {
   specificity: 0.25,
   context: 0.25,
@@ -68,20 +77,28 @@ export function scoreSpecificity(text: string): number {
 
 export function scoreContext(text: string): number {
   let s = 25;
+  // Audience is defined: "for/to/with my team", "to a client", "targeting
+  // CTOs", "aimed at non-technical small business owners", "to a 10-year-old".
+  // (Previously only "for (my|our|the|a) <audience>" was recognised, so
+  // prompts like "explain this to a 10-year-old" or "email to my boss" got no
+  // context credit at all.)
   if (
-    /for (my|our|the|a) (team|audience|client|customer|users?|readers?|boss|manager|stakeholders?|students?|kids|beginners?|experts?|senior|junior|company)/i.test(
+    /\b(for|to|with) (my|our|the|a|an) (team|audience|client|customer|users?|readers?|boss|manager|stakeholders?|students?|kids?|children?|beginners?|experts?|senior|junior|company|small business owners?)\b/i.test(
       text,
     ) ||
-    /target(ing|ed)|aimed at|geared toward|for (ctos?|ceos?|founders?|managers?|leaders?|developers?|designers?|marketers?|sales|support|hr|recruiters?|students?|parents?|businesses?|startups?|smes?)/i.test(
+    /\b(target(?:ing|ed)|aimed at|geared toward|intended for|written for|addressed to|for|to)\b[^.!?]{0,40}\b(ctos?|ceos?|founders?|managers?|leaders?|developers?|designers?|marketers?|salespeople?|recruiters?|parents?|businesses?|startups?|smes?|beginners?|small business owners?)\b/i.test(
       text,
-    )
+    ) ||
+    /\b(?:to|for) (?:a|an|my|our|the) \d{1,2}-?year-?olds?\b/i.test(text)
   ) {
     s += 30;
   }
+  // Purpose is stated: "so that", "in order to", "asking for", "to draft", …
   if (
-    /so that|in order to|to (achieve|improve|increase|reduce|learn|understand|decide|prepare|convince|sell|explain|teach|build|design|write|create)/i.test(
+    /so that|in order to|so i can|to (achieve|improve|increase|reduce|learn|understand|decide|prepare|convince|sell|explain|teach|build|design|write|create|get|ask|request|draft|plan)/i.test(
       text,
-    )
+    ) ||
+    /\b(asking|hoping|looking) (for|to)\b/i.test(text)
   ) {
     s += 20;
   }
@@ -95,7 +112,13 @@ export function scoreContext(text: string): number {
   if (/\b(our|the) (product|service|app|tool|company|platform|dashboard)\b/i.test(text)) {
     s += 15;
   }
-  if (/\b(within|under|no more than|at least|must|should|requirement|requirements)\b/i.test(text)) {
+  // Hard constraints: budget, deadline, "for 5 days", "per week".
+  if (
+    /\b(within|under|no more than|at least|must|should|requirement|requirements|budget|deadline|per (day|week|month|person|user))\b/i.test(
+      text,
+    ) ||
+    /\bfor \d+ (days?|weeks?|months?|people|hours?)\b/i.test(text)
+  ) {
     s += 10;
   }
   if (/^i (need|want) to/i.test(text.trim())) {
@@ -115,6 +138,15 @@ export function scoreRoleClarity(text: string): number {
   if (/imagine you are/i.test(text)) return 80;
   if (/pretend (to be|you are)/i.test(text)) return 75;
   if (/as an? /i.test(text) && !EXCLUDED_AS_PHRASES.test(text)) return 85;
+  // Implicit teacher role: "explain X to a 10-year-old / a beginner" assigns
+  // the AI a clear persona (spec §5.2 role clarity) without "act as".
+  if (
+    /explain (?:it|this|that|the|\w+) to (?:a|an|my|our|the) (?:kid|kids|child|children|beginner|beginners|\d{1,2}-?year-?old)/i.test(
+      text,
+    )
+  ) {
+    return 70;
+  }
   return 25;
 }
 
@@ -141,6 +173,11 @@ export function scoreOutputFormat(text: string): number {
     return 80;
   }
   let s = 20;
+  // A requested style (analogy/metaphor) is a real output constraint even
+  // without a structure keyword (e.g. "Use a simple analogy.").
+  if (/\b(analogy|analogies|metaphor|metaphors)\b/i.test(text)) {
+    s += 40;
+  }
   if (
     /in (at most|around|about|exactly|under)? ?\d+[ -]?(words|characters|pages|sentences|paragraphs|bullet points|items|ideas)/i.test(
       text,
@@ -172,7 +209,19 @@ const EXAMPLE_MARKERS = [
 ];
 
 export function scoreExamples(text: string): number {
-  const n = EXAMPLE_MARKERS.reduce((acc, re) => acc + countMatches(text, re), 0);
+  // Count fixed example phrases first and remove them, so "for example"
+  // counts once. Then a bare "example/sample" mention ("include one
+  // example", "give an example") also counts as an example signal —
+  // previously a prompt explicitly asking for an example was flagged
+  // "no_examples" because only the fixed phrases were recognised.
+  let t = text;
+  let n = 0;
+  for (const re of EXAMPLE_MARKERS) {
+    n += countMatches(t, re);
+    t = t.replace(re, " ");
+  }
+  n += countMatches(t, /\bexamples?\b/gi);
+  n += countMatches(t, /\bsamples?\b/gi);
   if (n === 0) return 10;
   if (n === 1) return 60;
   if (n === 2) return 80;

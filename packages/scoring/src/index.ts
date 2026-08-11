@@ -15,6 +15,7 @@ export * from "./types.js";
 export * from "./flags.js";
 export {
   RuleScoringEngine,
+  RULES_REVISION,
   deriveFlags,
   estimateTokens,
   scoreSpecificity,

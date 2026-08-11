@@ -122,6 +122,67 @@ describe("examples heuristic", () => {
   it("scores 60+ with one marker", () => {
     expect(scoreExamples("Give feedback. For example, like this: ...")).toBeGreaterThanOrEqual(60);
   });
+  it("counts a bare 'example' mention (not just fixed phrases)", () => {
+    expect(scoreExamples("Include one concrete example of a customer win.")).toBeGreaterThanOrEqual(
+      60,
+    );
+    expect(scoreExamples("Give me an example.")).toBeGreaterThanOrEqual(60);
+    expect(scoreExamples("Use the tone of our last post as a reference.")).toBe(10);
+  });
+  it("does not double-count 'for example' as two signals", () => {
+    expect(scoreExamples("For example, like this: ...")).toBeLessThanOrEqual(80);
+  });
+});
+
+describe("context heuristics", () => {
+  it("recognises an audience without 'for' (to a client, to a 10-year-old)", () => {
+    expect(engine.scoreSync("Write an email to a client.").breakdown.context).toBeGreaterThanOrEqual(
+      50,
+    );
+    expect(
+      engine.scoreSync("Explain recursion to a 10-year-old.").breakdown.context,
+    ).toBeGreaterThanOrEqual(50);
+    expect(engine.scoreSync("Write a note to my boss.").breakdown.context).toBeGreaterThanOrEqual(
+      50,
+    );
+  });
+  it("recognises a stated purpose ('asking for')", () => {
+    expect(engine.scoreSync("Write an email to my boss asking for a raise.").breakdown.context)
+      .toBeGreaterThanOrEqual(50);
+  });
+  it("recognises hard constraints (budget, 'for 5 days')", () => {
+    expect(engine.scoreSync("Give me a meal plan for 5 days. Budget 60 euros.").breakdown.context)
+      .toBeGreaterThanOrEqual(35);
+  });
+});
+
+describe("implicit teacher role", () => {
+  it("gives role credit for 'explain to a 10-year-old / beginner'", () => {
+    expect(scoreRoleClarity("Explain recursion to a 10-year-old.")).toBe(70);
+    expect(scoreRoleClarity("Explain this to a beginner.")).toBe(70);
+  });
+});
+
+describe("output format: requested style", () => {
+  it("treats an analogy/metaphor request as an output constraint", () => {
+    expect(scoreOutputFormat("Use a simple analogy.")).toBeGreaterThanOrEqual(50);
+  });
+});
+
+describe("realistic prompt quality (PMF regression set)", () => {
+  it("scores an excellent audience+example prompt above the red band", () => {
+    const r = engine.scoreSync(
+      "Explain recursion to a 10-year-old. For example, like the way Russian nesting dolls work. Use a simple analogy.",
+    );
+    expect(r.score).toBeGreaterThanOrEqual(50);
+    expect(r.breakdown.examples_included).toBeGreaterThanOrEqual(50);
+  });
+  it("recognises a concrete example inside an otherwise good prompt", () => {
+    const r = engine.scoreSync(
+      "Act as a B2B SaaS marketing manager. Write a 150-word cold email to a CTO who visited our pricing page. We are Acme, a 40-person company. Use a friendly tone and include one concrete example of a customer win.",
+    );
+    expect(r.flags).not.toContain("no_examples");
+  });
 });
 
 describe("long prompt truncation (spec §7: >4000 tokens → score first 1000 chars)", () => {
