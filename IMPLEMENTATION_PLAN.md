@@ -216,9 +216,12 @@ examples_included]` normalized 0..1), then exports the encoder as
   **2.89**, overall **1.67**, 8.2 ms/prompt over 1500 prompts, zero
   fallbacks.
 - **Hosting**: `models` deploy job + `ml/scripts/upload.mjs` upload the
-  artifact to the R2 bucket `revealyst-models`; one-time public access +
-  `MODEL_BASE_URL` setup in `docs/runbook.md`. Until configured, the
-  extension falls back to rules (spec §7).
+  artifact to the R2 bucket `revealyst-models` (`--remote` — wrangler r2
+  object commands default to the local simulator otherwise); the API worker
+  serves it via `GET /models/*` (`workers/src/routes/models.ts`), and the
+  extension loads it from `MODEL_BASE_URL` = the worker URL (already
+  configured in `extension/src/lib/model-config.ts`). If the model cannot
+  load, the extension falls back to rules (spec §7).
 - **Adapter** (`packages/scoring/src/onnx-adapter.ts`): new
   `feature-extraction` + `head.json` path (mean-pooled embedding →
   `sigmoid(W·h + b)` → 6 dims), injected `pipelineFactory` for bundled

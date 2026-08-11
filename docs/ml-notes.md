@@ -55,9 +55,10 @@ data for human labels (beta usage) and retrain when they exist.
      (MAE per dim, correlation, latency) and the provenance `README.md`
      records the numbers.
 3. Hosting — `ml/scripts/upload.mjs` (also a `models` deploy job) uploads the
-   artifact to the R2 bucket `revealyst-models`; the extension fetches it via
-   `MODEL_BASE_URL` (`extension/src/lib/model-config.ts`). One-time public
-   access setup is in `docs/runbook.md`.
+   artifact to the R2 bucket `revealyst-models`; the API worker serves it via
+   `GET /models/*`, and the extension fetches it through `MODEL_BASE_URL`
+   (`extension/src/lib/model-config.ts`, worker URL — already configured).
+   See `docs/runbook.md` → "ONNX prompt-scorer model".
 
 ### Adapter
 
