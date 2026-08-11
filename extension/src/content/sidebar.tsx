@@ -185,6 +185,10 @@ export function Sidebar(props: SidebarProps) {
 
   const score = props.result?.score ?? 0;
   const band = props.result ? bandFor(score) : "yellow";
+  // Task-floored dimensions (see ScoreMeta.flooredDims): rendered grey as
+  // "not needed" instead of a green bar that looks earned.
+  const result = props.result;
+  const flooredDims = new Set(result?.meta.flooredDims ?? []);
 
   return (
     <div className="flex h-full flex-col gap-3 p-4 text-sm">
@@ -244,13 +248,10 @@ export function Sidebar(props: SidebarProps) {
             {props.result ? band : "waiting for input"}
           </span>
         </div>
-        {props.result && (
+        {result && (
           <div className="mt-3 grid grid-cols-5 gap-1">
-            {Object.entries(props.result.breakdown).map(([dim, value]) => {
-              // Task-aware flooring auto-satisfies dimensions the prompt does
-              // not actually contain (e.g. role on a factual question). Those
-              // must render as "not needed", not a green bar that looks earned.
-              const floored = props.result.meta.flooredDims?.includes(dim as DimensionName);
+            {Object.entries(result.breakdown).map(([dim, value]) => {
+              const floored = flooredDims.has(dim as DimensionName);
               const label = DIMENSION_LABELS[dim] ?? dim;
               return (
                 <div
