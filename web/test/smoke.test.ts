@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { appName } from "../src/index";
+import { API_BASE } from "../src/api/client.js";
 
-describe("web package scaffold", () => {
-  it("exposes the package name", () => {
-    expect(appName).toBe("revealyst-web");
+describe("web package", () => {
+  it("targets the hosted Workers API by default", () => {
+    expect(API_BASE).toContain("https://");
+    expect(API_BASE).toContain("workers.dev");
   });
 });

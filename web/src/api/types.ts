@@ -140,12 +140,3 @@ export interface StatsResponse {
     active_weeks: number;
   };
 }
-
-export interface ScoreEvent {
-  prompt_hash: string;
-  score: number;
-  breakdown: Record<string, number>;
-  flags: string[];
-  llm_platform: string;
-  created_at: string;
-}

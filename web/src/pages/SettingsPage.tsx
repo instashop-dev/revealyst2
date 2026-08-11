@@ -121,7 +121,7 @@ export function SettingsPage() {
 
   async function deleteData() {
     if (!session) return;
-    if (!window.confirm("Delete all synced data? This cannot be undone.")) return;
+    if (!window.confirm("Delete your account and all synced data? This cannot be undone.")) return;
     setDeleteStatus("Deleting…");
     try {
       await api.deleteAccount(session.token);
@@ -322,13 +322,13 @@ export function SettingsPage() {
           onClick={deleteData}
           className="mt-3 ml-2 rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
         >
-          Delete my data
+          Delete account
         </button>
         {deleteStatus && <span className="ml-2 text-sm text-red-600">{deleteStatus}</span>}
         <p className="mt-3 text-xs text-zinc-400">
-          Export combines your cloud history and stats. Deleting your data removes synced scores,
-          events and library entries. Cloud sync state and extension-local history are controlled in
-          the extension&apos;s Settings.
+          Export combines your cloud history and stats. Deleting your account removes it and all
+          synced scores, events and library entries. Cloud sync state and extension-local history
+          are controlled in the extension&apos;s Settings.
         </p>
       </section>
     </div>

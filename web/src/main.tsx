@@ -14,6 +14,7 @@ import { SettingsPage } from "./pages/SettingsPage.js";
 import { TeamDashboardPage } from "./pages/TeamDashboardPage.js";
 import { LibraryPage } from "./pages/LibraryPage.js";
 import { AdminPage } from "./pages/AdminPage.js";
+import { NotFoundPage } from "./pages/NotFoundPage.js";
 
 /**
  * /team requires a manager role in at least one team. The server 403 is the
@@ -69,6 +70,7 @@ function GuardedApp() {
         <Route path="team" element={<TeamRoute />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="admin" element={<AdminRoute />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
