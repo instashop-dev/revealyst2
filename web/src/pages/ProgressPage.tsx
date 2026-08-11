@@ -117,6 +117,66 @@ export function ProgressPage() {
               </p>
             </section>
           </div>
+
+          <section className="rounded-2xl border border-zinc-200 p-6">
+            <h2 className="text-sm font-semibold text-zinc-700">North-star (spec §4)</h2>
+            <div className="mt-3 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-xl bg-emerald-50/50 p-4">
+                <p className="text-xs text-zinc-500">4-week PQS lift</p>
+                {stats.improvement?.pqs_delta_4w == null ? (
+                  <p className="mt-1 text-sm text-zinc-500">Score for 4 weeks to see your trend.</p>
+                ) : (
+                  <p
+                    className={`mt-1 text-2xl font-bold ${
+                      stats.improvement?.pqs_delta_4w >= 10
+                        ? "text-emerald-600"
+                        : stats.improvement?.pqs_delta_4w > 0
+                          ? "text-emerald-500"
+                          : "text-red-500"
+                    }`}
+                  >
+                    {stats.improvement?.pqs_delta_4w > 0 ? "+" : ""}
+                    {stats.improvement?.pqs_delta_4w} pts
+                  </p>
+                )}
+                <p className="mt-1 text-[10px] text-zinc-400">
+                  {stats.improvement?.current_avg == null
+                    ? "current week: no data"
+                    : `current 7d avg ${stats.improvement?.current_avg}`}
+                  {stats.improvement?.baseline_avg == null
+                    ? ""
+                    : ` · baseline ${stats.improvement?.baseline_avg}`}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-xs text-zinc-500">Re-prompt rate (30d)</p>
+                {stats.improvement?.reprompt_rate == null ? (
+                  <p className="mt-1 text-sm text-zinc-500">No data yet.</p>
+                ) : (
+                  <p className="mt-1 text-2xl font-bold text-zinc-800">
+                    {Math.round(stats.improvement?.reprompt_rate * 100)}%
+                  </p>
+                )}
+                {stats.improvement?.reprompt_rate != null &&
+                  stats.improvement?.reprompt_rate_prev != null && (
+                    <p className="mt-1 text-[10px] text-zinc-400">
+                      was {Math.round(stats.improvement?.reprompt_rate_prev * 100)}% the month
+                      before
+                    </p>
+                  )}
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-xs text-zinc-500">Active weeks (of 4)</p>
+                <p className="mt-1 text-2xl font-bold text-zinc-800">
+                  {stats.improvement?.active_weeks ?? "—"}
+                  <span className="text-sm font-normal text-zinc-400"> / 4</span>
+                </p>
+                <p className="mt-1 text-[10px] text-zinc-400">weekly retention signal</p>
+              </div>
+            </div>
+          </section>
         </>
       )}
     </div>

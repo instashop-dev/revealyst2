@@ -12,6 +12,11 @@ export default tseslint.config(
       "**/playwright-report/**",
       "**/test-results/**",
       "**/public/**",
+      // Python training environment + generated ONNX artifact (gitignored or
+      // minified data — never linted/committed).
+      "ml/.venv/**",
+      "ml/models/**",
+      "ml/data/**",
     ],
   },
   js.configs.recommended,

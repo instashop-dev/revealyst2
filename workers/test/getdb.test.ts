@@ -52,7 +52,7 @@ describe("getDb per-request connection lifecycle", () => {
     await getDb({ DATABASE_URL: directConn });
     const options = postgresMock.mock.calls[callsBefore]?.[1] as Record<string, unknown>;
     expect(options.connect_timeout).toBe(10);
-    expect(options.max).toBe(1);
+    expect(options.max).toBe(5);
     expect(options.prepare).toBe(false);
   });
 

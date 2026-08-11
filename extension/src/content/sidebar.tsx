@@ -146,6 +146,11 @@ export function Sidebar(props: SidebarProps) {
             {props.truncated ? "truncated · first 1000 chars" : ""}
           </span>
         </div>
+        {props.result?.meta.engine === "rules" && props.result.meta.modelError && (
+          <p className="mt-1 text-[10px] text-amber-600" title={props.result.meta.modelError}>
+            local model unavailable · using rule engine (spec §7)
+          </p>
+        )}
         <div className="mt-1 flex items-baseline gap-2">
           <span
             className={`font-mono text-4xl font-bold ${BAND_COLORS[band] ?? "bg-zinc-400"} bg-clip-text text-transparent`}

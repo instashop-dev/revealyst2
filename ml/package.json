@@ -7,6 +7,13 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
+    "generate:corpus": "node src/generate-corpus.ts",
+    "train:model": "python python/train.py",
+    "export:onnx": "python python/export_onnx.py",
+    "eval:model": "python python/eval.py",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@revealyst/scoring": "*"
   }
 }
