@@ -152,12 +152,6 @@ async function mainUnsafe(): Promise<void> {
           void completeOnboarding();
           rerender();
         },
-        onCloudSyncToggle: (enabled) => {
-          void setSettings({ cloudSync: enabled }).then((s) => {
-            settings.cloudSync = s.cloudSync;
-            rerender();
-          });
-        },
         onSaveSettings: (patch) => {
           void setSettings(patch).then((s) => {
             Object.assign(settings, s);
