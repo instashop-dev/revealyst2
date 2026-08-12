@@ -195,6 +195,18 @@ export function SettingsPage() {
           your team, and turn on <b>Cloud sync</b> — that&apos;s what sends scores to this dashboard
           and the team analytics.
         </p>
+        <p className="mt-3 text-sm text-zinc-500">
+          Don&apos;t have it installed yet? The extension is not on the Chrome Web Store yet, so{" "}
+          <a
+            href="/revealyst-extension.zip"
+            download="revealyst-extension.zip"
+            className="font-semibold text-emerald-700 hover:underline"
+          >
+            download the latest build here
+          </a>
+          , unzip it, open <code>chrome://extensions</code>, turn on <b>Developer mode</b> and click{" "}
+          <b>Load unpacked</b> to select the unzipped folder.
+        </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
             readOnly

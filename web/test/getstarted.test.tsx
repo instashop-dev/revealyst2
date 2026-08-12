@@ -15,6 +15,10 @@ describe("GetStarted onboarding checklist", () => {
     expect(screen.getByText("Connect your account")).toBeTruthy();
     expect(screen.getByText("Turn on Cloud sync")).toBeTruthy();
     expect(screen.getByText("Score your first prompt")).toBeTruthy();
+    // The install step links to the pre-Web-Store extension download.
+    const download = screen.getByRole("link", { name: /Download the extension/ });
+    expect(download.getAttribute("href")).toBe("/revealyst-extension.zip");
+    expect(download.getAttribute("download")).toBe("revealyst-extension.zip");
     // The connect step links into Settings for the API token.
     const link = screen.getByRole("link", { name: /Settings → Connect the extension/ });
     expect(link.getAttribute("href")).toBe("/settings");

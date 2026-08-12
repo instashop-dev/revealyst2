@@ -17,6 +17,8 @@ on:
     paths:
       - "workers/**"
       - "web/**"
+      - "extension/**"
+      - "packages/**"
       - "vectorize/**"
       - "db/**"
       - "ml/**"
@@ -281,6 +283,13 @@ jobs:
       - name: Build web app
         working-directory: web
         run: npm run build
+      # Pre-Web-Store distribution: rebuild + package the extension and stage
+      # the zip next to the dashboard shell, so /revealyst-extension.zip always
+      # serves the latest build from the current main.
+      - name: Build and package extension
+        run: npm run package -w extension
+      - name: Stage extension zip into Pages output
+        run: cp extension/revealyst-extension.zip web/dist/revealyst-extension.zip
       - name: Ensure Pages project exists
         if: ${{ hashFiles('web/index.html') != '' }}
         working-directory: web
