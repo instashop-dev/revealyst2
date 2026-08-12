@@ -174,7 +174,6 @@ export function clientTipsFor(flags: string[]): Suggestion[] {
 export const STORAGE_KEYS = {
   settings: "revealyst:settings",
   onboarding: "revealyst:onboarding",
-  session: "revealyst:session",
   history: "revealyst:history",
 } as const;
 

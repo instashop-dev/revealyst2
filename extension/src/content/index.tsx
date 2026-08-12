@@ -473,7 +473,9 @@ async function mainUnsafe(): Promise<void> {
       flashStatus(
         status === 401 || message.includes("Unauthorized")
           ? "Session expired — refresh your token in Settings"
-          : `Save failed — ${message}`,
+          : status === 403
+            ? "You're not in that team anymore — pick another team in Settings (⚙️)"
+            : `Save failed — ${message}`,
       );
     }
   }

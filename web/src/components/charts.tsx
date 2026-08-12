@@ -95,7 +95,7 @@ export function TrendChart({
 }
 
 /** Horizontal bar list, e.g. common weaknesses (spec §5.5). */
-export function BarList({ rows }: { rows: Array<{ label: string; count: number; pct?: number }> }) {
+export function BarList({ rows }: { rows: Array<{ label: string; count: number }> }) {
   const maxCount = Math.max(1, ...rows.map((r) => r.count));
   return (
     <ul className="flex flex-col gap-2">
@@ -108,9 +108,7 @@ export function BarList({ rows }: { rows: Array<{ label: string; count: number; 
               style={{ width: `${Math.round((r.count / maxCount) * 100)}%` }}
             />
           </div>
-          <span className="w-16 text-right text-xs text-zinc-400">
-            {r.pct ? `${r.pct}%` : r.count}
-          </span>
+          <span className="w-16 text-right text-xs text-zinc-400">{r.count}</span>
         </li>
       ))}
     </ul>
