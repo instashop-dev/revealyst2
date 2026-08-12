@@ -1,5 +1,5 @@
 import { bandFor } from "@revealyst/scoring";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { DimensionName, ScoreResult } from "@revealyst/scoring";
 import type { LocalHistoryEntry, Settings, Suggestion } from "../shared/types.js";
 import { appliedMessage, type AppliedFeedback } from "../lib/apply.js";
@@ -40,6 +40,11 @@ export interface SidebarProps {
   onClearHistory: () => void;
   localHistory: LocalHistoryEntry[];
   loadTeams: (token: string) => Promise<TeamOption[]>;
+  /** Settings panel visibility — lifted so save-to-library can open it
+   *  directly instead of dead-ending on "pick a team" guidance. */
+  settingsOpen: boolean;
+  onOpenSettings: () => void;
+  onCloseSettings: () => void;
 }
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -58,7 +63,6 @@ const BAND_COLORS: Record<string, string> = {
 
 export function Sidebar(props: SidebarProps) {
   const listRef = useRef<HTMLDivElement>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0 });
@@ -147,19 +151,27 @@ export function Sidebar(props: SidebarProps) {
         >
           Got it — start coaching
         </button>
+        {props.statusMessage && (
+          <p className="text-center text-[11px] text-zinc-500" role="status">
+            {props.statusMessage}
+          </p>
+        )}
       </div>
     );
   }
 
-  if (settingsOpen) {
+  if (props.settingsOpen) {
     return (
       <SettingsPanel
         settings={props.settings}
         localHistory={props.localHistory}
         onSave={(patch) => {
+          // Save persists and keeps the panel open: teams auto-load for the
+          // just-saved token in the same visit, so save-to-library works
+          // without a second trip (the old flow closed the panel first).
           props.onSaveSettings(patch);
-          setSettingsOpen(false);
         }}
+        onClose={props.onCloseSettings}
         onClearHistory={props.onClearHistory}
         loadTeams={props.loadTeams}
       />
@@ -218,7 +230,7 @@ export function Sidebar(props: SidebarProps) {
           </button>
           <button
             className="rounded px-1.5 py-1 text-sm hover:bg-zinc-100"
-            onClick={() => setSettingsOpen(true)}
+            onClick={props.onOpenSettings}
             title="Settings — token, team, local history"
           >
             ⚙️
@@ -320,7 +332,9 @@ export function Sidebar(props: SidebarProps) {
           )}
           {!props.busy && props.suggestions.length === 0 && props.result && (
             <p className="text-xs text-zinc-400">
-              {score >= 70 ? "Looking great — keep it up! 🎉" : "Start typing to get coaching."}
+              {score >= 70
+                ? "Looking great — keep it up! 🎉"
+                : "No auto-suggestions for this one — try adding more specifics or context."}
             </p>
           )}
           {props.suggestions.map((s) => (

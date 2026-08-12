@@ -99,6 +99,7 @@ async function mainUnsafe(): Promise<void> {
   let showOnboarding = !(await isOnboarded());
   let onboardingSampleActive = false;
   let inputMissing = false;
+  let settingsOpen = false;
   let input: HTMLElement | null = null;
   let lastHash = "";
   let lastPromptText = "";
@@ -138,7 +139,10 @@ async function mainUnsafe(): Promise<void> {
         onTrySample: () => {
           // Live demo (spec §5.8): insert a sample prompt, score it, and let
           // the user apply a real suggestion — onboarding teaches the flow.
-          if (!input) return;
+          if (!input) {
+            flashStatus("Finding the composer…");
+            return;
+          }
           setInputText(input, ONBOARDING_SAMPLE_PROMPT);
           onboardingSampleActive = true;
           onInput();
@@ -156,6 +160,15 @@ async function mainUnsafe(): Promise<void> {
         },
         onThumbs: (rating) => void recordRating(rating),
         onSaveToLibrary: () => void saveCurrentToLibrary(),
+        settingsOpen,
+        onOpenSettings: () => {
+          settingsOpen = true;
+          rerender();
+        },
+        onCloseSettings: () => {
+          settingsOpen = false;
+          rerender();
+        },
         onOnboardingDone: () => {
           showOnboarding = false;
           void completeOnboarding();
@@ -372,7 +385,12 @@ async function mainUnsafe(): Promise<void> {
     // scored prompt when no response was captured yet.
     const promptText = responsePromptText || lastPromptText;
     const hash = responseHash || lastHash;
-    if (!hash || !promptText) return;
+    if (!hash || !promptText) {
+      // Response detected but nothing was ever scored (e.g. an existing
+      // conversation on page load) — clicking a thumb silently did nothing.
+      flashStatus("Nothing to rate yet — send a prompt first");
+      return;
+    }
     ratedValue = rating;
     // Local history (device-only) gets the rating so the snippet view shows it.
     void rateLocalHistory(promptText.slice(0, 2000), def.id, rating).then(() => {
@@ -413,13 +431,20 @@ async function mainUnsafe(): Promise<void> {
   async function saveCurrentToLibrary(): Promise<void> {
     if (!isEditable(input)) return;
     const text = getInputText(input);
-    if (!text.trim()) return;
+    if (!text.trim()) {
+      // Star with an empty composer silently did nothing before.
+      flashStatus("Type a prompt first — then save it to the library");
+      return;
+    }
     if (!settings.apiToken) {
       flashStatus("Connect your account in the Revealyst toolbar popup");
       return;
     }
     if (!settings.teamId) {
-      flashStatus("Pick a team in Settings (⚙️)");
+      // Open the settings panel directly instead of leaving the user at a
+      // dead-end message: the team dropdown is one tap away from saving.
+      settingsOpen = true;
+      rerender();
       return;
     }
     try {

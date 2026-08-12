@@ -11,6 +11,8 @@ export interface SettingsPanelProps {
   settings: Settings;
   localHistory: LocalHistoryEntry[];
   onSave: (patch: Partial<Settings>) => void;
+  /** Close the panel without saving (the ✕ button). */
+  onClose: () => void;
   onClearHistory: () => void;
   loadTeams: (token: string) => Promise<TeamOption[]>;
 }
@@ -24,6 +26,7 @@ export function SettingsPanel({
   settings,
   localHistory,
   onSave,
+  onClose,
   onClearHistory,
   loadTeams,
 }: SettingsPanelProps) {
@@ -33,6 +36,7 @@ export function SettingsPanel({
   const [cloudSync, setCloudSync] = useState(settings.cloudSync);
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [teamsStatus, setTeamsStatus] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (settings.apiToken) {
@@ -66,13 +70,35 @@ export function SettingsPanel({
     }
   }
 
+  /** Save the current settings and keep the panel open. Teams load via the
+   *  effect on `settings.apiToken` (which re-fires after the parent persists
+   *  the new token) — calling loadTeams here too would race it, and it would
+   *  use the pre-save `apiBase` closure. */
+  function handleSave() {
+    onSave({
+      apiBase: apiBase.trim(),
+      apiToken: apiToken.trim(),
+      teamId,
+      cloudSync,
+    });
+    if (!apiToken.trim()) {
+      // Clearing the token must also clear the loaded teams, or a stale
+      // teamId could be re-saved with no way to authenticate it.
+      setTeams([]);
+      setTeamId("");
+      setTeamsStatus(null);
+    }
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2000);
+  }
+
   return (
     <div className="flex h-full flex-col gap-3 p-4 text-sm">
       <div className="flex items-center justify-between">
         <p className="text-base font-bold text-emerald-700">Settings</p>
         <button
           className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100"
-          onClick={() => onSave({})}
+          onClick={onClose}
         >
           Close ✕
         </button>
@@ -132,17 +158,15 @@ export function SettingsPanel({
 
       <button
         className="mt-auto rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-        onClick={() =>
-          onSave({
-            apiBase: apiBase.trim(),
-            apiToken: apiToken.trim(),
-            teamId,
-            cloudSync,
-          })
-        }
+        onClick={handleSave}
       >
-        Save settings
+        {saved ? "Saved ✓" : "Save settings"}
       </button>
+      {saved && (
+        <p className="text-center text-[11px] text-emerald-700" role="status">
+          Settings saved — pick a team above if you haven&apos;t yet.
+        </p>
+      )}
 
       {/* Advanced: hidden from normal users, kept for local development. */}
       <details className="text-xs text-zinc-500">
