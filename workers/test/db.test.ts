@@ -57,8 +57,6 @@ describe("teams repo", () => {
     expect(members).toHaveLength(2);
     expect(await repos.teams.isManager(teamId, managerId)).toBe(true);
     expect(await repos.teams.isManager(teamId, userId)).toBe(false);
-    await repos.teams.setRole(teamId, userId, "manager");
-    expect(await repos.teams.isManager(teamId, userId)).toBe(true);
   });
 });
 

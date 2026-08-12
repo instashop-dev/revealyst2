@@ -44,7 +44,6 @@ async function makeEnv(): Promise<WorkerEnv> {
     JWT_SECRET: TEST_SECRET,
     OPENAI_API_KEY: "test-openai-key",
     APP_URL: "http://localhost:8788",
-    VECTORIZE_NAMESPACE: "prompt-patterns",
     LIBRARY_ENC_KEY: TEST_SECRET,
     DEV_MODE: "true",
     RATE_LIMIT_DISABLED: "true",

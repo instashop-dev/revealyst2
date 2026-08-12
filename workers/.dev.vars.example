@@ -26,7 +26,6 @@ DATABASE_URL=
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=
 
 # Vectorize
-VECTORIZE_NAMESPACE=prompt-patterns
 
 # JWT signing secret for magic-link auth (generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 JWT_SECRET=

@@ -60,7 +60,6 @@ async function makeEnv(): Promise<WorkerEnv> {
     JWT_SECRET: "test-secret-0123456789abcdef0123456789abcdef",
     OPENAI_API_KEY: "test-openai-key",
     APP_URL: "https://revealyst-web.pages.dev",
-    VECTORIZE_NAMESPACE: "prompt-patterns",
     LIBRARY_ENC_KEY: "test-secret-0123456789abcdef0123456789abcdef",
     _DB: db,
   };

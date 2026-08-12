@@ -8,7 +8,6 @@ export interface WorkerEnv {
   OPENAI_API_KEY: string;
   /** Base URL of the web app, used for magic-link redirects. */
   APP_URL: string;
-  VECTORIZE_NAMESPACE: string;
   /** 32+ byte key material for AES-256-GCM library-prompt encryption. */
   LIBRARY_ENC_KEY: string;
   /** When truthy, magic links are returned in the API response (local dev). */

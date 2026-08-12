@@ -308,6 +308,17 @@ libraryRoutes.openapi(patchRoute, async (c) => {
   if (!member)
     return c.json({ error: "forbidden", message: "You are not a member of this team" }, 403);
 
+  // Manager-only governance fields (notes + Team Standard, spec §5.5/§5.6):
+  // reject up front. A non-manager sending them alongside a text edit must
+  // not have them silently dropped — that hides a permission violation and
+  // makes the client believe the fields were applied.
+  if ((body.notes !== undefined || body.is_standard !== undefined) && member.role !== "manager") {
+    return c.json(
+      { error: "forbidden", message: "Only managers can edit notes or Team Standard" },
+      403,
+    );
+  }
+
   // Editing the prompt body creates a new version, preserving the original
   // (spec §5.6 version history).
   if (body.prompt_text !== undefined) {
@@ -323,7 +334,7 @@ libraryRoutes.openapi(patchRoute, async (c) => {
     });
     // Carry manager governance fields onto the new version (a manager may
     // edit the text and the notes/standard in the same request).
-    if (member.role === "manager" && (body.notes !== undefined || body.is_standard !== undefined)) {
+    if (body.notes !== undefined || body.is_standard !== undefined) {
       const meta = await repos.library.updateMeta(updated.id, {
         notes: body.notes,
         isStandard: body.is_standard,
@@ -352,14 +363,6 @@ libraryRoutes.openapi(patchRoute, async (c) => {
   }
 
   // Manager-only governance: notes + Team Standard (spec §5.5/§5.6).
-  if (body.notes !== undefined || body.is_standard !== undefined) {
-    if (member.role !== "manager") {
-      return c.json(
-        { error: "forbidden", message: "Only managers can edit notes or Team Standard" },
-        403,
-      );
-    }
-  }
   const updated = await repos.library.updateMeta(id, {
     title: body.title,
     tags: body.tags,

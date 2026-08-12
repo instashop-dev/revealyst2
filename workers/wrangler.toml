@@ -30,7 +30,6 @@ enabled = true
 # Non-secret vars — real values come from the deployment workflow / .dev.vars.
 [vars]
 APP_URL = "https://revealyst-web.pages.dev"
-VECTORIZE_NAMESPACE = "prompt-patterns"
 DEV_MODE = "false"
 RATE_LIMIT_DISABLED = "false"
 
