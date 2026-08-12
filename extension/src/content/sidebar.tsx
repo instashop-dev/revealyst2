@@ -11,7 +11,7 @@ export interface SidebarProps {
   settings: Settings;
   result: ScoreResult | null;
   suggestions: Suggestion[];
-  suggestionSource: "vectorize+llm" | "static" | null;
+  suggestionSource: "vectorize+llm" | "static" | "client" | null;
   busy: boolean;
   showOnboarding: boolean;
   /** True once the user clicked "Try a sample prompt" in the onboarding. */
@@ -128,12 +128,18 @@ export function Sidebar(props: SidebarProps) {
                 className="rounded border border-emerald-100 bg-emerald-50/50 p-2 text-xs text-zinc-700"
               >
                 {s.text}
-                <button
-                  className="mt-1.5 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                  onClick={() => props.onApply(s)}
-                >
-                  Apply
-                </button>
+                {/* Advisory suggestions (e.g. "add a role") have no insertable
+                    preview — an Apply button would silently do nothing (the
+                    engine can't know the user's task). Render them as plain
+                    tips instead of a dead button (same rule as the main list). */}
+                {!s.advisory && (
+                  <button
+                    className="mt-1.5 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                    onClick={() => props.onApply(s)}
+                  >
+                    Apply
+                  </button>
+                )}
               </div>
             ))}
             {props.suggestions.length === 0 && (
@@ -299,7 +305,7 @@ export function Sidebar(props: SidebarProps) {
       <section className="flex-1 overflow-y-auto">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-xs font-medium text-zinc-500">Suggestions</span>
-          {props.suggestionSource === "static" && (
+          {props.suggestionSource === "client" && (
             <span
               className="text-[10px] text-zinc-400"
               title="Server unreachable — using offline tips"
