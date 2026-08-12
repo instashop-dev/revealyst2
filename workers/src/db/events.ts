@@ -98,7 +98,10 @@ export function createEventsRepo(db: SqlDb) {
       const params: unknown[] = [userId, sinceIso];
       let i = 3;
       if (filters.platform) {
-        conditions.push(`llm_platform = $${i}`);
+        // Case-insensitive so "chatgpt" matches "chatgpt" regardless of how
+        // the user types it in the dashboard filter (the extension stores the
+        // lowercase platform id).
+        conditions.push(`LOWER(llm_platform) = LOWER($${i})`);
         params.push(filters.platform);
         i += 1;
       }

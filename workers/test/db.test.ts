@@ -153,6 +153,17 @@ describe("events repo", () => {
     expect(history[0]?.prompt_hash).toBe("hash5");
   });
 
+  it("filters the user's history by platform, case-insensitively", async () => {
+    const chat = await repos.events.userHistory(userId, "2020-01-01T00:00:00.000Z", {
+      platform: "CHAT.OPENAI.COM",
+    });
+    expect(chat.map((e) => e.prompt_hash).sort()).toEqual(["hash1", "hash5"]);
+    const claude = await repos.events.userHistory(userId, "2020-01-01T00:00:00.000Z", {
+      platform: "claude.ai",
+    });
+    expect(claude.map((e) => e.prompt_hash)).toEqual(["hash2"]);
+  });
+
   it("aggregates anonymised team stats within the window", async () => {
     const since = new Date(Date.now() - 86400000).toISOString();
     const stats = await repos.events.teamStats(teamId, since);

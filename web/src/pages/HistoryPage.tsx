@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../auth/session.js";
@@ -30,7 +30,7 @@ export function HistoryPage() {
     setLoading(true);
     setError(null);
     api
-      .history(session.token, period, undefined, minScore || undefined)
+      .history(session.token, period, platformFilter.trim() || undefined, minScore || undefined)
       .then((res) => {
         if (!cancelled) {
           setEvents(res.events);
@@ -46,14 +46,12 @@ export function HistoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [session?.token, period, minScore]);
+  }, [session?.token, period, minScore, platformFilter]);
 
-  // Client-side platform filter — re-filters the fetched rows as you type.
-  const rows = useMemo(() => {
-    const q = platformFilter.trim().toLowerCase();
-    if (!q) return events;
-    return events.filter((e) => (e.llm_platform ?? "").toLowerCase().includes(q));
-  }, [events, platformFilter]);
+  // Server-side filters (period, platform, min score) — the API filters the
+  // full history, so nothing is silently hidden on large datasets.
+  const rows = events;
+  const hasFilters = period !== "all" || minScore > 0 || platformFilter.trim() !== "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -101,7 +99,7 @@ export function HistoryPage() {
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {loading && <p className="text-sm text-zinc-400">Loading…</p>}
 
-      {!loading && !error && events.length === 0 && (
+      {!loading && !error && events.length === 0 && !hasFilters && (
         <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
           No prompts synced in this period. Connect the extension (toolbar popup → Connect), turn on
           Cloud sync in the sidebar Settings (⚙️), then score a prompt.{" "}
@@ -112,7 +110,7 @@ export function HistoryPage() {
         </p>
       )}
 
-      {!loading && !error && events.length > 0 && rows.length === 0 && (
+      {!loading && !error && events.length === 0 && hasFilters && (
         <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
           Nothing matches the current filters — try a wider period, a lower min score, or a
           different platform.
