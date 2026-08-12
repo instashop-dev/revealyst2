@@ -66,6 +66,23 @@ secrets): `gate` → `vectorize` → `workers` (deploy + `wrangler secret put`) 
 - CI runs typecheck / lint / format / test / build on every PR and push
   (`.github/workflows/ci.yml`).
 
+### Chrome extension download (pre-Web-Store distribution)
+
+Until the extension is approved on the Chrome Web Store, the dashboard serves a
+direct download of the latest build. The deploy `pages` job rebuilds and
+packages the extension (`npm run package -w extension`) and stages
+`extension/revealyst-extension.zip` into the Pages output, so
+`https://revealyst-web.pages.dev/revealyst-extension.zip` always serves the zip
+built from the current `main`. The download link appears in the dashboard
+onboarding (Progress → Get started) and in Settings → Connect the extension.
+
+Installation (Chrome/Edge/Brave): download the zip, unzip it, open
+`chrome://extensions`, enable Developer mode, and click "Load unpacked" to
+select the unzipped folder. Re-download after each release to update.
+
+When the extension is approved on the Chrome Web Store, remove the staging step
+from the `pages` job and point the dashboard links at the store listing instead.
+
 ### ONNX prompt-scorer model (spec §5.2)
 
 The extension loads the trained int8 scorer from Cloudflare R2 at runtime,

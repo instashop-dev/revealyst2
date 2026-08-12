@@ -244,6 +244,22 @@ for (const path of ["/", "/auth/verify?token=smoke", "/progress"]) {
   }
 }
 
+// --- Web: extension download link ------------------------------------------
+// Pre-Web-Store distribution: the deploy pipeline stages the freshly built
+// extension zip next to the dashboard shell, so the dashboard's "Download the
+// extension" link always serves the latest build.
+const extRes = await fetch(`${WEB}/revealyst-extension.zip`, {
+  signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+});
+if (extRes.status === 200) {
+  pass(
+    "GET /revealyst-extension.zip",
+    `HTTP 200 (content-type: ${extRes.headers.get("content-type") ?? "unknown"})`,
+  );
+} else {
+  fail("GET /revealyst-extension.zip", `expected 200, got ${extRes.status}`);
+}
+
 // --- Summary ---------------------------------------------------------------
 console.log(
   `\n${failures === 0 ? "PASS" : "FAIL"} — ${failures} failure(s), ${warnings} warning(s)\n`,
