@@ -52,21 +52,6 @@ export function createTeamsRepo(db: SqlDb) {
       );
     },
 
-    async setRole(teamId: string, userId: string, role: "member" | "manager"): Promise<void> {
-      await db.query("UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2", [
-        teamId,
-        userId,
-        role,
-      ]);
-    },
-
-    async setAnonAlias(teamId: string, userId: string, alias: string | null): Promise<void> {
-      await db.query(
-        "UPDATE team_members SET anon_alias = $3 WHERE team_id = $1 AND user_id = $2",
-        [teamId, userId, alias],
-      );
-    },
-
     async isManager(teamId: string, userId: string): Promise<boolean> {
       const member = await this.findMember(teamId, userId);
       return member?.role === "manager";

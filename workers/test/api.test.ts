@@ -51,7 +51,6 @@ async function makeEnv(): Promise<WorkerEnv> {
     JWT_SECRET: TEST_SECRET,
     OPENAI_API_KEY: "test-openai-key",
     APP_URL: "http://localhost:8788",
-    VECTORIZE_NAMESPACE: "prompt-patterns",
     LIBRARY_ENC_KEY: TEST_SECRET,
     DEV_MODE: "true",
     RATE_LIMIT_DISABLED: "true",
@@ -682,6 +681,55 @@ describe("library", () => {
       env,
     );
     expect(res.status).toBe(403);
+  });
+
+  it("rejects a member trying to edit manager-only fields (notes/Team Standard)", async () => {
+    // A member PATCHing notes (even alongside a legitimate text edit) must get
+    // a clear 403 — previously the manager fields were silently dropped and
+    // the client believed they had been applied.
+    const memberPatch = await app.request(
+      `/api/library/${savedId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`, // jamie is a member
+        },
+        body: JSON.stringify({ prompt_text: "Updated text", notes: "Team favourite" }),
+      },
+      env,
+    );
+    expect(memberPatch.status).toBe(403);
+
+    // The same member may still edit the title/tags (member-scoped fields).
+    const memberEdit = await app.request(
+      `/api/library/${savedId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({ title: "Retitled by member" }),
+      },
+      env,
+    );
+    expect(memberEdit.status).toBe(200);
+
+    // A manager CAN set notes.
+    const managerPatch = await app.request(
+      `/api/library/${savedId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${managerToken}`,
+        },
+        body: JSON.stringify({ notes: "Team favourite" }),
+      },
+      env,
+    );
+    expect(managerPatch.status).toBe(200);
   });
 });
 
