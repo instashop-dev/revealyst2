@@ -8,6 +8,7 @@ import {
   scoreExamples,
   scoreOutputFormat,
   scoreRoleClarity,
+  scoreSpecificity,
 } from "../src/index";
 
 const engine = new RuleScoringEngine();
@@ -409,6 +410,49 @@ describe("score trust fixes (PMF review, rev 5)", () => {
     const r = engine.scoreSync("What is the capital of France?");
     expect(bandFor(r.score)).toBe("green");
     expect(r.flags).toHaveLength(0);
+  });
+});
+
+describe("score trust fixes (PMF review, rev 6)", () => {
+  it("flags missing_context when the prompt has no context signals at all", () => {
+    // scoreContext starts at 25 and only adds, so the missing_context flag
+    // (threshold < 25) was previously unreachable — even "What?" never got it.
+    const r = engine.scoreSync("What?");
+    expect(r.flags).toContain("missing_context");
+    expect(r.flags).toContain("vague_context");
+    expect(engine.scoreSync("write a draft").flags).toContain("missing_context");
+  });
+
+  it("does not flag missing_context once any context is named", () => {
+    const r = engine.scoreSync("Write an email to my boss about the project");
+    expect(r.flags).not.toContain("missing_context");
+  });
+
+  it("does not reward pure word-count padding on specificity", () => {
+    // 80 words of "blah" previously scored specificity 85 (a green bar) — the
+    // length ladder rewarded repetition. Padding must not look specific.
+    const r = engine.scoreSync("Blah ".repeat(80).trim());
+    expect(r.breakdown.specificity).toBeLessThan(60);
+    expect(r.flags).toContain("low_specificity");
+  });
+
+  it("recognises durations and quantities as specificity, not just length", () => {
+    // A short prompt that names a concrete constraint ("30-second") is more
+    // specific than the same prompt without it — and neither should be judged
+    // purely on word count.
+    expect(scoreSpecificity("Make a 30-second TikTok script")).toBeGreaterThan(
+      scoreSpecificity("Make a TikTok script"),
+    );
+    expect(scoreSpecificity("Give me 5 bullet points")).toBeGreaterThan(
+      scoreSpecificity("Give me a list"),
+    );
+  });
+
+  it("keeps a well-specified mid-length prompt green (ladder not over-flattened)", () => {
+    const r = engine.scoreSync(
+      "Explain the difference between a git merge and a rebase. Assume I know basic git. Give me one concrete example of when to use each, and a rule of thumb for choosing.",
+    );
+    expect(bandFor(r.score)).toBe("green");
   });
 });
 

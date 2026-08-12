@@ -145,6 +145,9 @@ function delay(ms: number): Promise<void> {
 /** "Fix a prompt that is missing output format and has vague context." */
 export function describeDeficiency(flags: string[]): string {
   const labels = flags
+    // "missing_context" is the strong form of "vague_context" — never describe
+    // both in one sentence ("…is missing context and has vague context").
+    .filter((f) => !(f === "missing_context" && flags.includes("vague_context")))
     .map((f) => flagInfo(f)?.description ?? f.replace(/_/g, " "))
     .map((label) => label.replace(/\.+$/, "")) // strip trailing periods for clean joins
     // Sentence-case the joined fragment so "Fix a prompt that The prompt does

@@ -45,8 +45,17 @@ const CHARS_PER_TOKEN = 4;
  * (b) "as a/an" role credit no longer fires on filler phrases like "as an
  * example" or "as an option" (previously only "as a …" phrases were
  * excluded), so "Use this as an example" stops painting the role bar green.
+ *
+ * Rev 6: specificity trust + context correctness. (a) Specificity is no
+ * longer mostly word count: the length ladder tops out at 76 and a
+ * repetition penalty strips padding ("blah blah …"), while durations and
+ * quantities ("30-second", "5 minutes") count as concrete detail, so a
+ * short-but-specific prompt is no longer punished and filler is no longer
+ * rewarded with a green specificity bar. (b) missing_context finally fires:
+ * the context score starts at 25 and only adds, so context <= 25 means the
+ * prompt has no context signals at all — the flag was dead code before.
  */
-export const RULES_REVISION = 5;
+export const RULES_REVISION = 6;
 
 const DIMENSION_WEIGHTS = {
   specificity: 0.25,
@@ -209,24 +218,55 @@ export function applyTaskFloors(breakdown: ScoreBreakdown, kind: TaskKind): Scor
 const VAGUE_WORDS =
   /\b(thing|things|stuff|something|some|nice|good|better|great|etc\.?|basically|really|kind of|sort of|make it|do it|help me with it)\b/gi;
 
-/** Concrete signals: numbers, quantities, URLs, identifiers, proper nouns
- *  (a capitalised word mid-sentence — not the start of a sentence). */
+/** Concrete signals: numbers, durations, quantities, URLs, identifiers,
+ *  proper nouns (a capitalised word mid-sentence — not the start of a
+ *  sentence). Durations like "30-second" and quantities like "5 minutes" or
+ *  "400 customers" are real specificity — a short prompt that names them is
+ *  more specific than a long one that names nothing (PMF review). */
 const CONCRETE_SIGNALS =
-  /\d+%|\$\s?\d+|\d+\s?(words|items|examples|ideas|options|points|pages|paragraphs|people|users|days|hours|months|years)|https?:\/\/\S+|@\w+|(?<![.!?]\s|^)[A-Z][a-z]{3,}/g;
+  /\d+%|\$\s?\d+|\d+[ -]?(seconds?|minutes?|hours?|days?|weeks?|months?|years?|words|items|examples|ideas|options|points|pages|paragraphs|people|users|questions|steps|tips|reasons|ways|bullet points|customers|clients|leads|emails|requests|tasks|projects)|https?:\/\/\S+|@\w+|(?<![.!?]\s|^)[A-Z][a-z]{3,}/g;
+
+/**
+ * Padding is not specificity: when a single word dominates a long prompt
+ * ("blah blah …", lorem-style filler), the length is repetition, not detail.
+ * Returns a penalty (0-25); only triggers on prompts long enough to look
+ * detailed (25+ words) with one word making up >= 1/4 of them.
+ */
+function repetitionPenalty(text: string): number {
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length < 25) return 0;
+  const freq = new Map<string, number>();
+  for (const w of words) freq.set(w, (freq.get(w) ?? 0) + 1);
+  let max = 0;
+  for (const f of freq.values()) if (f > max) max = f;
+  if (max / words.length >= 0.25) return 25;
+  return 0;
+}
 
 export function scoreSpecificity(text: string): number {
   const wc = wordCount(text);
+  // Length alone is weak evidence of specificity: the ladder tops out at 76
+  // so pure padding can never paint the specificity bar green — concrete
+  // detail (numbers, durations, quantities, names, URLs) earns the top band.
+  // (PMF review: an 80-word filler prompt previously scored specificity 92.)
   let base: number;
   if (wc < 5) base = 20;
   else if (wc < 15) base = 40;
   else if (wc < 30) base = 60;
   else if (wc < 50) base = 75;
-  else if (wc < 80) base = 85;
-  else base = 92;
+  else base = 76;
 
-  const concrete = countMatches(text, CONCRETE_SIGNALS);
+  const repetition = repetitionPenalty(text);
+  // Padding cannot claim concrete credit: when one word dominates the prompt,
+  // repeated "concrete-looking" words (capitalised filler like "Blah Blah …")
+  // must not resurrect the specificity score.
+  const concrete = repetition > 0 ? 0 : countMatches(text, CONCRETE_SIGNALS);
   const vague = countMatches(text, VAGUE_WORDS);
-  return clamp(base + concrete * 8 - vague * 6);
+  return clamp(base + concrete * 8 - vague * 6 - repetition);
 }
 
 export function scoreContext(text: string): number {
@@ -435,7 +475,12 @@ export function deriveFlags(
   if (meta.charCount < 20) flags.push("too_short");
   if (breakdown.specificity < 60) flags.push("low_specificity");
   if (breakdown.context < 55) flags.push("vague_context");
-  if (breakdown.context < 25) flags.push("missing_context");
+  // The context score starts at 25 and only ever adds bonuses, so a score of
+  // exactly 25 means the prompt carries NO context signals (audience, purpose,
+  // background, constraints). Previously the threshold was < 25, which the
+  // rule engine could never reach — missing_context was dead code and even an
+  // empty prompt did not flag it.
+  if (breakdown.context <= 25) flags.push("missing_context");
   if (breakdown.role_clarity < 50) flags.push("missing_role");
   if (breakdown.output_format < 50) flags.push("missing_output_format");
   if (breakdown.examples_included < 50) flags.push("no_examples");
