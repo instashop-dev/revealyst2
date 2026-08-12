@@ -49,10 +49,13 @@ export function ProgressPage() {
 
   const radarPoints = DIMENSIONS.map((d) => ({
     label: d.label,
-    value: stats?.radar[d.key] ?? 0,
+    value: stats?.radar?.[d.key] ?? 0,
   })).filter((p) => p.value > 0);
   const trend = (stats?.trend ?? []).map((t) => ({ label: t.day, value: t.avg_score }));
-  const hasData = (stats?.prompts_count ?? 0) > 0 && radarPoints.length > 0;
+  // A user with any synced events has real data — the onboarding checklist
+  // must not replace their stats just because every radar dimension is zero
+  // (e.g. all events carried empty breakdowns).
+  const hasData = (stats?.prompts_count ?? 0) > 0;
   const focus = radarPoints.length
     ? radarPoints.reduce((min, p) => (p.value < min.value ? p : min), radarPoints[0]!).label
     : null;
@@ -95,12 +98,14 @@ export function ProgressPage() {
           </section>
 
           <div className="grid gap-6 md:grid-cols-2">
-            <section className="rounded-2xl border border-zinc-200 p-6">
-              <h2 className="mb-2 text-sm font-semibold text-zinc-700">
-                Strengths &amp; weaknesses
-              </h2>
-              <RadarChart points={radarPoints} />
-            </section>
+            {radarPoints.length > 0 && (
+              <section className="rounded-2xl border border-zinc-200 p-6">
+                <h2 className="mb-2 text-sm font-semibold text-zinc-700">
+                  Strengths &amp; weaknesses
+                </h2>
+                <RadarChart points={radarPoints} />
+              </section>
+            )}
             <section className="rounded-2xl border border-zinc-200 p-6">
               <h2 className="mb-2 text-sm font-semibold text-zinc-700">At a glance</h2>
               <ul className="mt-3 space-y-2 text-sm text-zinc-600">
