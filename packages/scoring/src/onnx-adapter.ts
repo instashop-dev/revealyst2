@@ -86,7 +86,16 @@ export class OnnxScoringAdapter implements ScoringAdapter {
     const pipeline = await this.loadPipeline();
     if (!pipeline) {
       this.engineKind = "rules";
-      return this.fallback.score(prompt, options);
+      const result = await this.fallback.score(prompt, options);
+      // A configured model that failed to load is a real degradation the user
+      // should see (spec §7 "model unavailable" notice) — the load-timeout and
+      // import-failure paths previously fell back silently. Only when no model
+      // was configured at all is rule-based scoring the normal state.
+      if (!this.config) return result;
+      return {
+        ...result,
+        meta: { ...result.meta, modelError: "model_load_failed" },
+      };
     }
     try {
       const result = await this.scoreWithModel(pipeline, prompt, options);
@@ -133,13 +142,20 @@ export class OnnxScoringAdapter implements ScoringAdapter {
       return this.dynamicImportPipeline(task, modelId, options);
     };
     // A slow model host must never stall scoring: give the pipeline 15s to
-    // load, then fall back to rules (spec §7).
+    // load, then fall back to rules (spec §7). Clear the timer when the load
+    // wins the race so it cannot keep the isolate/event loop alive.
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      return await Promise.race([
+      const loaded = await Promise.race([
         create(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000)),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), 15_000);
+        }),
       ]);
+      if (timer) clearTimeout(timer);
+      return loaded;
     } catch {
+      if (timer) clearTimeout(timer);
       return null;
     }
   }

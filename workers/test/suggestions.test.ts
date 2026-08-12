@@ -24,6 +24,16 @@ describe("describeDeficiency", () => {
     expect(describeDeficiency(["mystery_flag"])).toBe("Fix a prompt that mystery flag.");
   });
 
+  it("collapses missing_context into vague_context (not both in one sentence)", () => {
+    // The rules engine now fires missing_context whenever a prompt has no
+    // context signals at all — which also makes it vague. Describing both
+    // would read "…is missing context and has little background…".
+    expect(describeDeficiency(["vague_context", "missing_context"])).toBe(
+      "Fix a prompt that little background, audience or goal is provided.",
+    );
+    expect(describeDeficiency(["missing_context"])).toContain("almost no context");
+  });
+
   it("returns a generic query for empty flags", () => {
     expect(describeDeficiency([])).toBe("Improve the prompt quality.");
   });
