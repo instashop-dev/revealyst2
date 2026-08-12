@@ -726,3 +726,84 @@ describe("team invites (§5.8)", () => {
     }
   });
 });
+
+describe("team leave & member removal (PMF review)", () => {
+  it("blocks the last manager from leaving", async () => {
+    // rohan is the only manager — leaving would leave the team unmanaged.
+    const res = await app.request(
+      `/api/team/${teamId}/leave`,
+      { method: "POST", headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("only manager");
+  });
+
+  it("lets a member leave and drops the membership", async () => {
+    const res = await app.request(
+      `/api/team/${teamId}/leave`,
+      { method: "POST", headers: { Authorization: `Bearer ${memberToken}` } },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const teams = (await (
+      await app.request(
+        "/api/teams",
+        { method: "GET", headers: { Authorization: `Bearer ${memberToken}` } },
+        env,
+      )
+    ).json()) as { teams: Array<{ id: string }> };
+    expect(teams.teams.some((t) => t.id === teamId)).toBe(false);
+    // Restore jamie's membership for the remaining tests.
+    await seedRepos().teams.addMember(teamId, memberUserId, "member", "User_A");
+  });
+
+  it("requires membership to leave", async () => {
+    const outsider = await login("outsider@example.com");
+    const res = await app.request(
+      `/api/team/${teamId}/leave`,
+      { method: "POST", headers: { Authorization: `Bearer ${outsider}` } },
+      env,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("lets a manager remove a member", async () => {
+    const res = await app.request(
+      `/api/team/members/${memberUserId}?team_id=${teamId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const members = (await (
+      await app.request(
+        `/api/team/members?team_id=${teamId}`,
+        { method: "GET", headers: { Authorization: `Bearer ${managerToken}` } },
+        env,
+      )
+    ).json()) as { members: Array<{ user_id: string }> };
+    expect(members.members.some((m) => m.user_id === memberUserId)).toBe(false);
+    await seedRepos().teams.addMember(teamId, memberUserId, "member", "User_A");
+  });
+
+  it("forbids a manager from removing themselves (use leave instead)", async () => {
+    const rohan = await seedRepos().users.findByEmail("rohan.sharma@example.com");
+    const res = await app.request(
+      `/api/team/members/${rohan?.id}?team_id=${teamId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain("Leave team");
+  });
+
+  it("forbids non-managers from removing members", async () => {
+    const rohan = await seedRepos().users.findByEmail("rohan.sharma@example.com");
+    const res = await app.request(
+      `/api/team/members/${rohan?.id}?team_id=${teamId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${memberToken}` } },
+      env,
+    );
+    expect(res.status).toBe(403);
+  });
+});

@@ -57,6 +57,24 @@ export function createTeamsRepo(db: SqlDb) {
       return member?.role === "manager";
     },
 
+    /** Number of managers in a team (last-manager guards on leave/remove). */
+    async countManagers(teamId: string): Promise<number> {
+      const { rows } = await db.query<{ n: string }>(
+        "SELECT COUNT(*)::text AS n FROM team_members WHERE team_id = $1 AND role = 'manager'",
+        [teamId],
+      );
+      return Number(rows[0]?.n ?? 0);
+    },
+
+    /** Remove a membership (member leaving, or manager removing someone). */
+    async removeMember(teamId: string, userId: string): Promise<boolean> {
+      const { rows } = await db.query<{ user_id: string }>(
+        "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2 RETURNING user_id",
+        [teamId, userId],
+      );
+      return rows.length > 0;
+    },
+
     /** All teams the user belongs to, with their role in each (spec §5.5). */
     async listForUser(userId: string): Promise<Array<{ team: TeamRow; member: TeamMemberRow }>> {
       // Single JOIN — avoids the N+1 (one findById per membership) that made

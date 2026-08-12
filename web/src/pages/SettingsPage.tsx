@@ -21,6 +21,7 @@ export function SettingsPage() {
   const [showToken, setShowToken] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [deleteStatus, setDeleteStatus] = useState<string | null>(null);
+  const [teamStatus, setTeamStatus] = useState<string | null>(null);
 
   const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
   const isManager = selectedTeam?.role === "manager";
@@ -94,6 +95,35 @@ export function SettingsPage() {
       refresh();
     } catch {
       // Manager-only endpoint; ignore.
+    }
+  }
+
+  /** Self-serve exit from a team (privacy: nobody is stuck in a team). */
+  async function leaveTeam() {
+    if (!session || !selectedTeamId) return;
+    if (!window.confirm(`Leave "${selectedTeam?.name ?? "this team"}"?`)) return;
+    setTeamStatus(null);
+    try {
+      await api.leaveTeam(session.token, selectedTeamId);
+      setSelectedTeamId("");
+      refresh();
+      setTeamStatus("You left the team.");
+    } catch (e) {
+      setTeamStatus(e instanceof Error ? e.message : "Failed to leave the team");
+    }
+  }
+
+  /** Manager-only: remove a member from the team. */
+  async function removeMember(member: TeamMember) {
+    if (!session || !selectedTeamId || !isManager) return;
+    if (!window.confirm(`Remove ${member.display_name} from this team?`)) return;
+    setTeamStatus(null);
+    try {
+      await api.removeMember(session.token, selectedTeamId, member.user_id);
+      setMembers((ms) => ms?.filter((m) => m.user_id !== member.user_id) ?? null);
+      setTeamStatus(`${member.display_name} was removed.`);
+    } catch (e) {
+      setTeamStatus(e instanceof Error ? e.message : "Failed to remove the member");
     }
   }
 
@@ -234,6 +264,18 @@ export function SettingsPage() {
           )}
         </label>
 
+        {selectedTeam && (
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={() => void leaveTeam()}
+              className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+            >
+              Leave team
+            </button>
+            {teamStatus && <span className="text-sm text-zinc-600">{teamStatus}</span>}
+          </div>
+        )}
+
         {selectedTeam && isManager && (
           <div className="mt-4">
             <h3 className="text-sm font-semibold text-zinc-700">Invite members</h3>
@@ -252,6 +294,7 @@ export function SettingsPage() {
                     <th className="px-3 py-2">Member</th>
                     <th className="px-3 py-2">Role</th>
                     <th className="px-3 py-2">Opt-in to identifiable</th>
+                    {isManager && <th className="px-3 py-2">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -278,6 +321,18 @@ export function SettingsPage() {
                             </span>
                           )}
                         </td>
+                        {isManager && (
+                          <td className="px-3 py-2">
+                            {!isSelf && (
+                              <button
+                                onClick={() => void removeMember(m)}
+                                className="rounded border border-red-200 px-2 py-1 text-[11px] text-red-600 hover:bg-red-50"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
