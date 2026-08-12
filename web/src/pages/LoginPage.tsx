@@ -5,9 +5,13 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
+  // Guards double-clicks: each submit sends one magic link email.
+  const [sending, setSending] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (sending) return;
+    setSending(true);
     setStatus("idle");
     try {
       await api.requestMagicLink(email);
@@ -15,6 +19,8 @@ export function LoginPage() {
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Something went wrong");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -46,14 +52,18 @@ export function LoginPage() {
               id="email"
               type="email"
               required
+              disabled={sending}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-50"
               placeholder="you@company.com"
             />
             {status === "error" && <p className="text-sm text-red-600">{message}</p>}
-            <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-              Send me a magic link
+            <button
+              disabled={sending}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-400"
+            >
+              {sending ? "Sending…" : "Send me a magic link"}
             </button>
             <p className="text-xs text-zinc-400">
               Don&apos;t have a team? You can still track your personal progress after signing in.

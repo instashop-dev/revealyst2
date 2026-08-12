@@ -1,0 +1,4 @@
+# SPA fallback: every path (including the /auth/verify magic-link deep link)
+# serves index.html so hard refreshes and email links never 404.
+# Cloudflare Pages _redirects uses '#' comments only.
+/*    /index.html   200
