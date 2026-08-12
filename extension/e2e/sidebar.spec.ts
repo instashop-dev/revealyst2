@@ -119,4 +119,39 @@ test.describe("Revealyst sidebar (mock ChatGPT page)", () => {
     await host.getByTitle("Save to library").click();
     await expect(host).toContainText("Connect your account in the Revealyst toolbar popup");
   });
+
+  test("star with an empty composer gives feedback instead of a silent no-op", async ({ page }) => {
+    await page.goto("/chatgpt.html");
+    const host = page.locator("#revealyst-sidebar-host");
+    await expect(host).toBeAttached({ timeout: 15_000 });
+    await host.getByText("Got it — start coaching").click();
+
+    // Empty composer → clicking ⭐ now explains why nothing happened.
+    await host.getByTitle("Save to library").click();
+    await expect(host).toContainText("Type a prompt first — then save it to the library");
+  });
+
+  test("save settings keeps the panel open and confirms the save (no second trip)", async ({
+    page,
+  }) => {
+    await page.goto("/chatgpt.html");
+    const host = page.locator("#revealyst-sidebar-host");
+    await expect(host).toBeAttached({ timeout: 15_000 });
+    await host.getByText("Got it — start coaching").click();
+
+    await host.getByTitle("Settings — token, team, local history").click();
+    await expect(host).toContainText("API token");
+    // Paste a token and save: the panel stays open with a confirmation, so the
+    // team dropdown can load in the same visit (previously the panel closed
+    // and teams only loaded on the next open).
+    await host.locator('input[placeholder="Paste your session token"]').fill("test-token");
+    await host.getByRole("button", { name: "Save settings" }).click();
+    await expect(host).toContainText("Settings saved");
+    await expect(host.getByRole("button", { name: "Close ✕" })).toBeVisible();
+    // The panel did not close — the settings header is still on screen.
+    await expect(host).toContainText("Team (save-to-library)");
+    // Close via ✕ returns to the sidebar.
+    await host.getByRole("button", { name: "Close ✕" }).click();
+    await expect(host).toContainText("Prompt Quality Score");
+  });
 });

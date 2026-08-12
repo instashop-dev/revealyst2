@@ -167,8 +167,11 @@ async function enableCloudSync(host: Locator) {
   const checkbox = host.locator("label", { hasText: "Cloud sync" }).locator("input");
   await expect(checkbox).toBeVisible();
   if (!(await checkbox.isChecked())) await checkbox.check();
-  await host.getByText("Save settings").click();
-  // Save closes the settings panel; the sidebar header is visible again.
+  await host.getByRole("button", { name: "Save settings" }).click();
+  // Save keeps the settings panel open (teams load for the saved token in the
+  // same visit); close it via ✕ to return to the sidebar header.
+  await expect(host.getByRole("button", { name: "Close ✕" })).toBeVisible();
+  await host.getByRole("button", { name: "Close ✕" }).click();
   await expect(host.getByText("Prompt Quality Score")).toBeVisible();
 }
 
@@ -479,6 +482,8 @@ describe("Revealyst sidebar on real chatgpt.com", () => {
     await expect(baseInput).toBeVisible();
     await baseInput.fill("http://127.0.0.1:1");
     await host.getByRole("button", { name: "Save settings" }).click();
+    // Save keeps the panel open; close it to reach the sidebar.
+    await host.getByRole("button", { name: "Close ✕" }).click();
     await expect(host).toContainText("Prompt Quality Score");
 
     // Score a prompt → suggestion network call fails → static tips appear.
