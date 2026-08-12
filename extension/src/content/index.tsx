@@ -91,7 +91,10 @@ async function mainUnsafe(): Promise<void> {
   let localHistory = await getLocalHistory();
   let result: ScoreResult | null = null;
   let suggestions: Suggestion[] = [];
-  let suggestionSource: "vectorize+llm" | "static" | null = null;
+  // "vectorize+llm" = server-sourced (LLM), "static" = server-sourced
+  // (server-side fallback), "client" = the device couldn't reach the server
+  // and used local tips (the only case the sidebar labels "offline tips").
+  let suggestionSource: "vectorize+llm" | "static" | "client" | null = null;
   let busy = false;
   let appliedFeedback: AppliedFeedback | null = null;
   let statusMessage: string | null = null;
@@ -300,7 +303,7 @@ async function mainUnsafe(): Promise<void> {
             // matched to THIS prompt's deficiencies (a green prompt gets no
             // irrelevant tips).
             suggestions = clientTipsFor(update.result.flags);
-            suggestionSource = "static";
+            suggestionSource = "client";
           } else {
             suggestions = parsed.suggestions ?? [];
             suggestionSource = parsed.source ?? null;
@@ -312,7 +315,7 @@ async function mainUnsafe(): Promise<void> {
           // client-side fallback list, matched to the prompt's deficiencies.
           busy = false;
           suggestions = clientTipsFor(update.result.flags);
-          suggestionSource = "static";
+          suggestionSource = "client";
           rerender();
         });
     }
