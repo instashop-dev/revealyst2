@@ -731,6 +731,68 @@ describe("library", () => {
     );
     expect(managerPatch.status).toBe(200);
   });
+
+  it("deletes a prompt the member created (their own card)", async () => {
+    // savedId was created by the member (authed() defaults to sessionToken).
+    const res = await app.request(
+      `/api/library/${savedId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${sessionToken}` } },
+      env,
+    );
+    expect(res.status).toBe(200);
+    const list = (await (
+      await app.request(`/api/library?team_id=${teamId}`, authed(), env)
+    ).json()) as { prompts: Array<{ id: string }>; total: number };
+    expect(list.prompts.some((p) => p.id === savedId)).toBe(false);
+  });
+
+  it("forbids a member from deleting a prompt they did not create", async () => {
+    const saveRes = await app.request(
+      "/api/library",
+      authed(
+        { team_id: teamId, prompt_text: "Manager's prompt", title: "Manager's" },
+        managerToken,
+      ),
+      env,
+    );
+    expect(saveRes.status).toBe(201);
+    const managerPromptId = ((await saveRes.json()) as { id: string }).id;
+
+    // The list exposes can_delete so the UI hides the button — the member's
+    // view of the manager's card must be false.
+    const list = (await (
+      await app.request(`/api/library?team_id=${teamId}`, authed(), env)
+    ).json()) as { prompts: Array<{ id: string; can_delete: boolean }> };
+    const card = list.prompts.find((p) => p.id === managerPromptId);
+    expect(card?.can_delete).toBe(false);
+
+    const res = await app.request(
+      `/api/library/${managerPromptId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${sessionToken}` } },
+      env,
+    );
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { message: string }).message).toContain(
+      "Only the contributor or a team manager",
+    );
+
+    // The manager CAN delete it.
+    const managerDelete = await app.request(
+      `/api/library/${managerPromptId}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${managerToken}` } },
+      env,
+    );
+    expect(managerDelete.status).toBe(200);
+  });
+
+  it("requires a session to delete a prompt", async () => {
+    const res = await app.request(
+      "/api/library/00000000-0000-4000-8000-000000000000",
+      { method: "DELETE" },
+      env,
+    );
+    expect(res.status).toBe(401);
+  });
 });
 
 describe("feedback", () => {

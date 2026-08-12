@@ -224,6 +224,45 @@ export function createLibraryRepo(db: SqlDb) {
       );
       return Number(rows[0]?.n ?? 0);
     },
+
+    /**
+     * Delete a prompt and its entire version chain. `parent_id` has no
+     * cascade, so deleting just the card row would orphan older versions and
+     * leave them listed. Collect the chain root-first (oldest ancestor →
+     * latest version) and delete leaf-first so the parent_id foreign key
+     * never blocks (children reference their parent). Returns rows deleted.
+     */
+    async remove(id: string): Promise<number> {
+      // 1. Walk up from the deleted id to the oldest ancestor.
+      const upOrder: LibraryPromptRow[] = [];
+      const upSeen = new Set<string>();
+      let up: LibraryPromptRow | undefined = await this.findById(id);
+      while (up && !upSeen.has(up.id)) {
+        upSeen.add(up.id);
+        upOrder.push(up);
+        if (!up.parent_id) break;
+        up = await this.findById(up.parent_id);
+      }
+      // 2. From the root, walk down through every child version (the walk
+      //    may pass already-collected rows — that is the chain, not a cycle).
+      const chain: LibraryPromptRow[] = [];
+      const walkSeen = new Set<string>();
+      let cursor: LibraryPromptRow | undefined = upOrder[upOrder.length - 1];
+      while (cursor && !walkSeen.has(cursor.id)) {
+        walkSeen.add(cursor.id);
+        chain.push(cursor);
+        const { rows } = await db.query<LibraryPromptRow>(
+          "SELECT * FROM library_prompts WHERE parent_id = $1 ORDER BY version LIMIT 1",
+          [cursor.id],
+        );
+        cursor = rows[0];
+      }
+      // 3. Leaf-first (reverse of root-first) — never violates the parent FK.
+      for (const row of [...chain].reverse()) {
+        await db.query("DELETE FROM library_prompts WHERE id = $1", [row.id]);
+      }
+      return chain.length;
+    },
   };
 }
 
