@@ -306,6 +306,71 @@ const settingsRoute = createRoute({
   },
 });
 
+const leaveRoute = createRoute({
+  method: "post",
+  path: "/api/team/{id}/leave",
+  middleware: [requireAuth],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({ message: z.string() }),
+        },
+      },
+      description: "User left the team",
+    },
+    400: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Last manager cannot leave",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not a team member",
+    },
+  },
+});
+
+const removeMemberRoute = createRoute({
+  method: "delete",
+  path: "/api/team/members/{user_id}",
+  middleware: [requireAuth],
+  request: {
+    params: z.object({ user_id: z.string().uuid() }),
+    query: z.object({ team_id: z.string().uuid() }),
+  },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({ message: z.string() }),
+        },
+      },
+      description: "Member removed",
+    },
+    400: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Cannot remove self / cannot remove the only manager",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not a team manager",
+    },
+    404: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Member not found",
+    },
+  },
+});
+
 export const teamRoutes = new OpenAPIHono<AppEnv>();
 
 teamRoutes.openapi(createTeamRoute, async (c) => {
@@ -605,6 +670,58 @@ teamRoutes.openapi(settingsRoute, async (c) => {
     },
     200,
   );
+});
+
+teamRoutes.openapi(leaveRoute, async (c) => {
+  const { id } = c.req.valid("param");
+  const db = await getDb(c.env);
+  const repos = createRepos(db);
+  const member = await repos.teams.findMember(id, c.var.userId);
+  if (!member) {
+    return c.json({ error: "forbidden", message: "You are not a member of this team" }, 403);
+  }
+  // A team must keep a manager (digest, invites, governance). The last
+  // manager can still remove the team entirely via Settings → Data →
+  // Delete account (which drops orphan teams), so nobody is trapped.
+  if (member.role === "manager" && (await repos.teams.countManagers(id)) <= 1) {
+    return c.json(
+      {
+        error: "last_manager",
+        message: "You are the only manager — add another manager before leaving",
+      },
+      400,
+    );
+  }
+  await repos.teams.removeMember(id, c.var.userId);
+  return c.json({ message: "You left the team" }, 200);
+});
+
+teamRoutes.openapi(removeMemberRoute, async (c) => {
+  const { user_id } = c.req.valid("param");
+  const { team_id } = c.req.valid("query");
+  const db = await getDb(c.env);
+  const repos = createRepos(db);
+  if (!(await repos.teams.isManager(team_id, c.var.userId))) {
+    return c.json({ error: "forbidden", message: "Only team managers can remove members" }, 403);
+  }
+  if (user_id === c.var.userId) {
+    return c.json({ error: "self_removal", message: "Use 'Leave team' to remove yourself" }, 400);
+  }
+  const target = await repos.teams.findMember(team_id, user_id);
+  if (!target) {
+    return c.json({ error: "not_found", message: "This person is not a member of the team" }, 404);
+  }
+  if (target.role === "manager" && (await repos.teams.countManagers(team_id)) <= 1) {
+    return c.json(
+      {
+        error: "last_manager",
+        message: "Cannot remove the only manager — promote someone else first",
+      },
+      400,
+    );
+  }
+  await repos.teams.removeMember(team_id, user_id);
+  return c.json({ message: "Member removed" }, 200);
 });
 
 /**

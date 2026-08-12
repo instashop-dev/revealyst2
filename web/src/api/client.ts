@@ -161,6 +161,22 @@ export const api = {
     });
   },
 
+  /** Self-serve exit from a team (blocked by the API for the last manager). */
+  leaveTeam(token: string, teamId: string): Promise<{ message: string }> {
+    return request(`/api/team/${encodeURIComponent(teamId)}/leave`, {
+      method: "POST",
+      headers: authed(token),
+    });
+  },
+
+  /** Manager-only: remove a member from the team. */
+  removeMember(token: string, teamId: string, userId: string): Promise<{ message: string }> {
+    return request(
+      `/api/team/members/${encodeURIComponent(userId)}?team_id=${encodeURIComponent(teamId)}`,
+      { method: "DELETE", headers: authed(token) },
+    );
+  },
+
   // --- Personal analytics ----------------------------------------------------
 
   history(
