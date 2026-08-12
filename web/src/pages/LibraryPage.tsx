@@ -44,6 +44,7 @@ export function LibraryPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newTags, setNewTags] = useState("");
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null;
   const isManager = selectedTeam?.role === "manager";
@@ -209,6 +210,25 @@ export function LibraryPage() {
     }
   }
 
+  /** Delete a prompt and its version history (creator or manager only — the
+   *  server enforces it; the button is hidden when the card says no). */
+  async function deletePrompt(card: LibraryCard) {
+    if (!session) return;
+    const label = card.title?.trim() || "this prompt";
+    if (
+      !window.confirm(`Delete \u201C${label}\u201D and all its versions? This cannot be undone.`)
+    ) {
+      return;
+    }
+    setDeleteError(null);
+    try {
+      await api.libraryDelete(session.token, card.id);
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Failed to delete prompt");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -335,6 +355,9 @@ export function LibraryPage() {
 
           {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
           {loading && <p className="text-sm text-zinc-400">Loading…</p>}
+          {deleteError && (
+            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{deleteError}</p>
+          )}
 
           {!loading && !error && cards.length === 0 && (
             <p className="rounded-2xl border border-zinc-200 p-6 text-sm text-zinc-500">
@@ -502,6 +525,14 @@ export function LibraryPage() {
                     >
                       {isManager ? "Edit (notes)" : "Edit"}
                     </button>
+                    {card.can_delete && (
+                      <button
+                        onClick={() => void deletePrompt(card)}
+                        className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
 
                   {versions && openVersions[card.id] && (

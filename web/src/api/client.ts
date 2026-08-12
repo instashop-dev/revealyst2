@@ -250,4 +250,11 @@ export const api = {
       headers: authed(token),
     });
   },
+
+  libraryDelete(token: string, id: string): Promise<{ message: string }> {
+    return request(`/api/library/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: authed(token),
+    });
+  },
 };

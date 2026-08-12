@@ -63,6 +63,8 @@ export interface LibraryCard {
   last_used_at: string | null;
   created_at: string;
   contributor: string;
+  /** Whether the signed-in user may delete this prompt (creator or manager). */
+  can_delete: boolean;
 }
 
 export interface LibraryDetail {

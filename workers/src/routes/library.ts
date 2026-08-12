@@ -6,6 +6,7 @@ import { decryptPrompt, encryptPrompt, sha256Hex } from "../crypto.js";
 import { requireAuth } from "../auth.js";
 import type { AppEnv } from "../env.js";
 import type { Repos } from "../db/index.js";
+import type { LibraryPromptRow } from "../db/schema.js";
 
 const errorResponse = z.object({ error: z.string(), message: z.string() });
 
@@ -21,6 +22,8 @@ const libraryCard = z.object({
   last_used_at: z.string().nullable(),
   created_at: z.string(),
   contributor: z.string(),
+  /** Whether the requesting user may delete this prompt (creator or manager). */
+  can_delete: z.boolean(),
 });
 
 const listRoute = createRoute({
@@ -188,9 +191,59 @@ const versionsRoute = createRoute({
   },
 });
 
+const deleteRoute = createRoute({
+  method: "delete",
+  path: "/api/library/{id}",
+  middleware: [requireAuth],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: z.object({ message: z.string() }),
+        },
+      },
+      description: "Prompt and its version history deleted",
+    },
+    401: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Unauthorized",
+    },
+    403: {
+      content: { "application/json": { schema: errorResponse } },
+      description: "Not a team member / not the contributor or a manager",
+    },
+    404: { content: { "application/json": { schema: errorResponse } }, description: "Not found" },
+  },
+});
+
 export const libraryRoutes = new OpenAPIHono<AppEnv>();
 
 type MemberContext = { repos: Repos };
+
+/** Shared card mapper: contributor pseudonym + delete permission (creator or
+ *  manager) — the three list/save/patch handlers must agree on the shape. */
+function toCard(
+  p: LibraryPromptRow,
+  memberAliases: Map<string, string | null>,
+  isManager: boolean,
+  userId: string,
+) {
+  return {
+    id: p.id,
+    title: p.title,
+    tags: p.tags ?? [],
+    score: p.score,
+    usage_count: p.usage_count,
+    version: p.version,
+    is_standard: p.is_standard,
+    notes: p.notes,
+    last_used_at: p.last_used_at,
+    created_at: p.created_at,
+    contributor: memberAliases.get(p.created_by ?? "") ?? "Member",
+    can_delete: isManager || p.created_by === userId,
+  };
+}
 
 async function memberRepos(c: {
   env: AppEnv["Bindings"];
@@ -213,24 +266,15 @@ libraryRoutes.openapi(listRoute, async (c) => {
     sort: query.sort,
     page: query.page,
   });
+  const member = await repos.teams.findMember(query.team_id, c.var.userId);
   const memberAliases = new Map(
     (await repos.teams.listMembers(query.team_id)).map((m) => [m.user_id, m.anon_alias]),
   );
   return c.json(
     {
-      prompts: result.prompts.map((p) => ({
-        id: p.id,
-        title: p.title,
-        tags: p.tags ?? [],
-        score: p.score,
-        usage_count: p.usage_count,
-        version: p.version,
-        is_standard: p.is_standard,
-        notes: p.notes,
-        last_used_at: p.last_used_at,
-        created_at: p.created_at,
-        contributor: memberAliases.get(p.created_by ?? "") ?? "Member",
-      })),
+      prompts: result.prompts.map((p) =>
+        toCard(p, memberAliases, member?.role === "manager", c.var.userId),
+      ),
       total: result.total,
     },
     200,
@@ -264,19 +308,7 @@ libraryRoutes.openapi(saveRoute, async (c) => {
     score: body.score ?? 0,
   });
   return c.json(
-    {
-      id: saved.id,
-      title: saved.title,
-      tags: saved.tags ?? [],
-      score: saved.score,
-      usage_count: saved.usage_count,
-      version: saved.version,
-      is_standard: saved.is_standard,
-      notes: saved.notes,
-      last_used_at: saved.last_used_at,
-      created_at: saved.created_at,
-      contributor: member.anon_alias ?? "Member",
-    },
+    toCard(saved, new Map([[member.user_id, member.anon_alias]]), false, c.var.userId),
     201,
   );
 });
@@ -344,22 +376,7 @@ libraryRoutes.openapi(patchRoute, async (c) => {
     const memberAliases = new Map(
       (await repos.teams.listMembers(prompt.team_id)).map((m) => [m.user_id, m.anon_alias]),
     );
-    return c.json(
-      {
-        id: updated.id,
-        title: updated.title,
-        tags: updated.tags ?? [],
-        score: updated.score,
-        usage_count: updated.usage_count,
-        version: updated.version,
-        is_standard: updated.is_standard,
-        notes: updated.notes,
-        last_used_at: updated.last_used_at,
-        created_at: updated.created_at,
-        contributor: memberAliases.get(updated.created_by ?? "") ?? "Member",
-      },
-      200,
-    );
+    return c.json(toCard(updated, memberAliases, member.role === "manager", c.var.userId), 200);
   }
 
   // Manager-only governance: notes + Team Standard (spec §5.5/§5.6).
@@ -373,22 +390,7 @@ libraryRoutes.openapi(patchRoute, async (c) => {
   const memberAliases = new Map(
     (await repos.teams.listMembers(prompt.team_id)).map((m) => [m.user_id, m.anon_alias]),
   );
-  return c.json(
-    {
-      id: updated.id,
-      title: updated.title,
-      tags: updated.tags ?? [],
-      score: updated.score,
-      usage_count: updated.usage_count,
-      version: updated.version,
-      is_standard: updated.is_standard,
-      notes: updated.notes,
-      last_used_at: updated.last_used_at,
-      created_at: updated.created_at,
-      contributor: memberAliases.get(updated.created_by ?? "") ?? "Member",
-    },
-    200,
-  );
+  return c.json(toCard(updated, memberAliases, member.role === "manager", c.var.userId), 200);
 });
 
 libraryRoutes.openapi(versionsRoute, async (c) => {
@@ -412,4 +414,28 @@ libraryRoutes.openapi(versionsRoute, async (c) => {
     },
     200,
   );
+});
+
+libraryRoutes.openapi(deleteRoute, async (c) => {
+  const { id } = c.req.valid("param");
+  const { repos } = await memberRepos(c);
+  const prompt = await repos.library.findById(id);
+  if (!prompt) return c.json({ error: "not_found", message: "Prompt not found" }, 404);
+  const member = await repos.teams.findMember(prompt.team_id, c.var.userId);
+  if (!member)
+    return c.json({ error: "forbidden", message: "You are not a member of this team" }, 403);
+  // Library hygiene (spec §5.6): the contributor or a manager may delete a
+  // prompt (and its full version history). Other members get a clear 403 —
+  // no silent drops, same rule as manager-only governance fields.
+  if (member.role !== "manager" && prompt.created_by !== c.var.userId) {
+    return c.json(
+      {
+        error: "forbidden",
+        message: "Only the contributor or a team manager can delete this prompt",
+      },
+      403,
+    );
+  }
+  await repos.library.remove(id);
+  return c.json({ message: "prompt deleted" }, 200);
 });

@@ -299,6 +299,43 @@ describe("library repo", () => {
     const updated = await repos.library.findById(promptId);
     expect(updated?.usage_count).toBe(1);
   });
+
+  it("removes a prompt and its whole version chain", async () => {
+    const saved = await repos.library.insert({
+      teamId,
+      title: "Chain root",
+      encryptedPrompt: "enc1",
+      promptHash: "sha256-chain-1",
+      tags: [],
+      createdBy: userId,
+      score: 60,
+    });
+    const v2 = await repos.library.createVersion(saved, {
+      encryptedPrompt: "enc2",
+      promptHash: "sha256-chain-2",
+      title: "Chain v2",
+      tags: [],
+      score: 70,
+      createdBy: userId,
+    });
+    const v3 = await repos.library.createVersion(v2, {
+      encryptedPrompt: "enc3",
+      promptHash: "sha256-chain-3",
+      title: "Chain v3",
+      tags: [],
+      score: 80,
+      createdBy: userId,
+    });
+
+    // Deleting a middle version must take the whole chain with it
+    // (parent_id has no cascade — orphaned versions would stay listed).
+    const removed = await repos.library.remove(v2.id);
+    expect(removed).toBe(3);
+    expect(await repos.library.findById(saved.id)).toBeUndefined();
+    expect(await repos.library.findById(v2.id)).toBeUndefined();
+    expect(await repos.library.findById(v3.id)).toBeUndefined();
+    expect(await repos.library.list(teamId, { search: "Chain" })).toMatchObject({ total: 0 });
+  });
 });
 
 describe("feedback repo", () => {
